@@ -4,8 +4,12 @@ from __future__ import annotations
 
 import logging
 import shutil
+import time
+from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
+
+from pydantic import BaseModel, ConfigDict
 
 from igitdeck.clock import from_epoch, utcnow
 from igitdeck.git import GitClient, GitCommandError
@@ -16,12 +20,36 @@ from igitdeck.repositories.repos import RepoRepository
 from igitdeck.repositories.stats import StatsRepository
 from igitdeck.repositories.sync_runs import SyncRunRepository
 from igitdeck.services.metadata import MetadataClient
-from igitdeck.services.readme import ReadmeService
-from igitdeck.services.stats_collector import StatsCollector
+from igitdeck.services.readme import ReadmeService, ReadmeSource
+from igitdeck.services.stats_collector import StatsCollector, StatsSummary
 
 logger = logging.getLogger(__name__)
 
 _MAX_ERROR_LENGTH = 2000
+
+
+class _Mirror(BaseModel):
+    """The bare mirror and worktree after the remote has been fetched."""
+
+    model_config = ConfigDict(frozen=True)
+
+    bare: Path
+    worktree: Path
+    branch: str
+    commit_sha: str
+
+
+class _Capture(BaseModel):
+    """Everything a successful sync publishes, before any database write."""
+
+    model_config = ConfigDict(frozen=True)
+
+    branch: str
+    commit_sha: str
+    last_commit_at: datetime
+    summary: StatsSummary
+    readme: ReadmeSource
+    description: str | None
 
 
 class SyncService:
@@ -53,97 +81,127 @@ class SyncService:
             return
 
         started_at = utcnow()
+        started = time.monotonic()
         run_id = self.runs.start(repo_id, trigger=trigger, started_at=started_at)
         self.repos.mark_syncing(repo_id, started_at)
         commit_sha: str | None = None
 
         try:
-            bare = self.paths.bare_repo(repo.platform, repo.owner, repo.name)
-            worktree = self.paths.worktree(repo.platform, repo.owner, repo.name)
-            bare.parent.mkdir(parents=True, exist_ok=True)
-            worktree.parent.mkdir(parents=True, exist_ok=True)
+            mirror = self._update_bare(repo)
+            commit_sha = mirror.commit_sha
+            self._refresh_worktree(mirror)
+            capture = self._capture(repo, mirror)
 
-            if bare.is_dir():
-                self.git.fetch(bare)
-            else:
-                self._clone_mirror(repo, bare)
-
-            branch = self._resolve_default_branch(repo, bare)
-            self.git.set_default_branch(bare, branch)
-            commit_sha = self.git.rev_parse(bare, f"refs/heads/{branch}")
-
-            self._sync_worktree(bare, worktree, commit_sha)
-            summary = self.collector.collect(worktree, disk_roots=[bare, worktree])
-            readme = self.readme.inspect(worktree)
-
-            description = repo.description
-            if not description:
-                description = self.metadata.fetch_description(
-                    RepoIdentity(
-                        platform=repo.platform,
-                        owner=repo.owner,
-                        name=repo.name,
-                        url=repo.url,
-                    )
-                )
-
-            commit_epoch = self.git.commit_time(bare, commit_sha)
-            last_commit_at = from_epoch(commit_epoch)
-            if last_commit_at is None:
-                raise RuntimeError("git returned an invalid commit timestamp")
-
-            synced_at = utcnow()
-            self.stats.add_snapshot(
-                repo_id,
-                RepoStats(
-                    captured_at=synced_at,
-                    commit_sha=commit_sha,
-                    code_lines=summary.code_lines,
-                    comment_lines=summary.comment_lines,
-                    blank_lines=summary.blank_lines,
-                    file_count=summary.file_count,
-                    disk_bytes=summary.disk_bytes,
-                    languages=summary.languages,
-                ),
-            )
-            self.repos.mark_success(
-                repo_id,
-                synced_at=synced_at,
-                default_branch=branch,
-                last_commit_at=last_commit_at,
-                readme_path=readme.path,
-                readme_text=readme.text,
-                description=description,
-            )
+            self._persist(repo_id, capture, synced_at=utcnow())
             self.runs.finish(
                 run_id,
                 status=SyncRunStatus.SUCCESS,
                 finished_at=utcnow(),
-                message=f"{branch} @ {commit_sha[:10]}",
-                commit_sha=commit_sha,
+                message=f"{capture.branch} @ {capture.commit_sha[:10]}",
+                commit_sha=capture.commit_sha,
             )
             logger.info(
-                "synced %s/%s @ %s (%s files, %s code lines)",
+                "synced %s/%s @ %s in %.1fs (%s files, %s code lines)",
                 repo.owner,
                 repo.name,
-                commit_sha[:10],
-                summary.file_count,
-                summary.code_lines,
+                capture.commit_sha[:10],
+                time.monotonic() - started,
+                capture.summary.file_count,
+                capture.summary.code_lines,
             )
         except Exception as exc:  # every failure belongs in the run log
-            message = _brief(exc)
-            logger.exception("sync failed for %s/%s", repo.owner, repo.name)
-            try:
-                self.repos.mark_failure(repo_id, message)
-                self.runs.finish(
-                    run_id,
-                    status=SyncRunStatus.FAILED,
-                    finished_at=utcnow(),
-                    message=message,
-                    commit_sha=commit_sha,
-                )
-            except Exception:
-                logger.exception("failed to record sync failure for repo %s", repo_id)
+            self._record_failure(repo, run_id, commit_sha, exc)
+
+    def _update_bare(self, repo: RepoRecord) -> _Mirror:
+        bare = self.paths.bare_repo(repo.platform, repo.owner, repo.name)
+        worktree = self.paths.worktree(repo.platform, repo.owner, repo.name)
+        bare.parent.mkdir(parents=True, exist_ok=True)
+        worktree.parent.mkdir(parents=True, exist_ok=True)
+
+        if bare.is_dir():
+            self.git.fetch(bare)
+        else:
+            self._clone_mirror(repo, bare)
+
+        branch = self._resolve_default_branch(repo, bare)
+        self.git.set_default_branch(bare, branch)
+        return _Mirror(
+            bare=bare,
+            worktree=worktree,
+            branch=branch,
+            commit_sha=self.git.rev_parse(bare, f"refs/heads/{branch}"),
+        )
+
+    def _capture(self, repo: RepoRecord, mirror: _Mirror) -> _Capture:
+        summary = self.collector.collect(mirror.worktree, disk_roots=[mirror.bare, mirror.worktree])
+        readme = self.readme.inspect(mirror.worktree)
+        description = repo.description or self.metadata.fetch_description(
+            RepoIdentity(
+                platform=repo.platform,
+                owner=repo.owner,
+                name=repo.name,
+                url=repo.url,
+            )
+        )
+        commit_epoch = self.git.commit_time(mirror.bare, mirror.commit_sha)
+        last_commit_at = from_epoch(commit_epoch)
+        if last_commit_at is None:
+            raise RuntimeError("git returned an invalid commit timestamp")
+
+        return _Capture(
+            branch=mirror.branch,
+            commit_sha=mirror.commit_sha,
+            last_commit_at=last_commit_at,
+            summary=summary,
+            readme=readme,
+            description=description,
+        )
+
+    def _persist(self, repo_id: int, capture: _Capture, *, synced_at: datetime) -> None:
+        summary = capture.summary
+        self.stats.add_snapshot(
+            repo_id,
+            RepoStats(
+                captured_at=synced_at,
+                commit_sha=capture.commit_sha,
+                code_lines=summary.code_lines,
+                comment_lines=summary.comment_lines,
+                blank_lines=summary.blank_lines,
+                file_count=summary.file_count,
+                disk_bytes=summary.disk_bytes,
+                languages=summary.languages,
+            ),
+        )
+        self.repos.mark_success(
+            repo_id,
+            synced_at=synced_at,
+            default_branch=capture.branch,
+            last_commit_at=capture.last_commit_at,
+            readme_path=capture.readme.path,
+            readme_text=capture.readme.text,
+            description=capture.description,
+        )
+
+    def _record_failure(
+        self,
+        repo: RepoRecord,
+        run_id: int,
+        commit_sha: str | None,
+        exc: BaseException,
+    ) -> None:
+        message = _brief(exc)
+        logger.exception("sync failed for %s/%s", repo.owner, repo.name)
+        try:
+            self.repos.mark_failure(repo.id, message)
+            self.runs.finish(
+                run_id,
+                status=SyncRunStatus.FAILED,
+                finished_at=utcnow(),
+                message=message,
+                commit_sha=commit_sha,
+            )
+        except Exception:
+            logger.exception("failed to record sync failure for repo %s", repo.id)
 
     def _clone_mirror(self, repo: RepoRecord, bare: Path) -> None:
         temp = bare.with_name(f"{bare.name}.tmp-{uuid4().hex}")
@@ -166,10 +224,11 @@ class SyncService:
             raise RuntimeError("无法确定仓库默认分支")
         return branch
 
-    def _sync_worktree(self, bare: Path, worktree: Path, commit: str) -> None:
+    def _refresh_worktree(self, mirror: _Mirror) -> None:
+        worktree = mirror.worktree
         if worktree.exists() and (worktree / ".git").exists():
             try:
-                self.git.update_worktree(worktree, commit)
+                self.git.update_worktree(worktree, mirror.commit_sha)
                 return
             except GitCommandError as exc:
                 logger.warning("worktree refresh failed, recreating: %s", exc)
@@ -177,8 +236,8 @@ class SyncService:
         elif worktree.exists():
             shutil.rmtree(worktree, ignore_errors=True)
 
-        self.git.prune_worktrees(bare)
-        self.git.add_worktree(bare, worktree, commit)
+        self.git.prune_worktrees(mirror.bare)
+        self.git.add_worktree(mirror.bare, worktree, mirror.commit_sha)
 
 
 def _brief(exc: BaseException) -> str:

@@ -7,6 +7,8 @@ from enum import StrEnum
 
 from pydantic import BaseModel, computed_field
 
+from igitdeck.models.naming import RepoNaming
+
 
 class SyncTrigger(StrEnum):
     MANUAL = "manual"
@@ -30,15 +32,8 @@ class SyncRunRecord(BaseModel):
     commit_sha: str | None
 
 
-class SyncRunView(SyncRunRecord):
+class SyncRunView(SyncRunRecord, RepoNaming):
     platform: str
-    owner: str
-    name: str
-
-    @computed_field
-    @property
-    def full_name(self) -> str:
-        return f"{self.owner}/{self.name}"
 
     @computed_field
     @property

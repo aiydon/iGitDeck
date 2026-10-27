@@ -12,6 +12,7 @@ from pathlib import Path
 import uvicorn
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
 
 from igitdeck.api.errors import install_error_handlers
 from igitdeck.api.routes import dashboard, git, repos
@@ -30,9 +31,10 @@ def configure_logging(level: str) -> None:
     )
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(settings: Settings | None = None, *, with_logging: bool = True) -> FastAPI:
     resolved_settings = settings or load_settings()
-    configure_logging(resolved_settings.log_level)
+    if with_logging:
+        configure_logging(resolved_settings.log_level)
     container = build_container(resolved_settings)
 
     @asynccontextmanager
@@ -86,8 +88,6 @@ def _mount_frontend(app: FastAPI, dist: Path) -> None:
     if index.is_file():
         assets = dist / "assets"
         if assets.is_dir():
-            from fastapi.staticfiles import StaticFiles
-
             app.mount("/assets", StaticFiles(directory=assets), name="assets")
 
         @app.api_route("/{full_path:path}", methods=["GET", "HEAD"], include_in_schema=False)

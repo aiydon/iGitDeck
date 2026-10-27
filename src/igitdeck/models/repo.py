@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import re
+from collections.abc import Sequence
 from datetime import datetime
 from enum import StrEnum
 from urllib.parse import unquote, urlsplit
@@ -10,6 +12,8 @@ from urllib.parse import unquote, urlsplit
 from pydantic import BaseModel, Field, computed_field, field_validator
 
 from igitdeck.models.errors import InvalidRepoUrl
+from igitdeck.models.naming import RepoNaming
+from igitdeck.models.sync import SyncRunView
 from igitdeck.urls import clone_path
 
 
@@ -45,6 +49,14 @@ class RepoStatus(StrEnum):
     ERROR = "error"
 
 
+class FacetField(StrEnum):
+    """Columns that may be grouped for filter facets."""
+
+    PLATFORM = "platform"
+    SOURCE = "source"
+    STATUS = "status"
+
+
 class SortField(StrEnum):
     ADDED_AT = "added_at"
     LAST_SYNCED_AT = "last_synced_at"
@@ -67,6 +79,19 @@ class LanguageStat(BaseModel):
     files: int = Field(ge=0)
     percent: float
 
+    @classmethod
+    def decode_many(cls, payload: str) -> list[LanguageStat]:
+        """Read the JSON array stored in `repo_snapshots.languages`."""
+        return [cls.model_validate(item) for item in json.loads(payload)]
+
+    @classmethod
+    def encode_many(cls, languages: Sequence[LanguageStat]) -> str:
+        return json.dumps(
+            [language.model_dump(mode="json") for language in languages],
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+
 
 class RepoStats(BaseModel):
     captured_at: datetime
@@ -84,23 +109,14 @@ class SnapshotRecord(RepoStats):
     repo_id: int
 
 
-class RepoIdentity(BaseModel):
+class RepoIdentity(RepoNaming):
     platform: Platform
-    owner: str
-    name: str
     url: str
 
-    @computed_field
-    @property
-    def full_name(self) -> str:
-        return f"{self.owner}/{self.name}"
 
-
-class RepoRecord(BaseModel):
+class RepoRecord(RepoNaming):
     id: int
     platform: Platform
-    owner: str
-    name: str
     url: str
     source: RepoSource
     status: RepoStatus
@@ -126,11 +142,9 @@ class SearchSnippet(BaseModel):
     highlights: list[HighlightSpan] = Field(default_factory=list)
 
 
-class RepoSummary(BaseModel):
+class RepoSummary(RepoNaming):
     id: int
     platform: Platform
-    owner: str
-    name: str
     url: str
     source: RepoSource
     status: RepoStatus
@@ -147,13 +161,36 @@ class RepoSummary(BaseModel):
 
     @computed_field
     @property
-    def full_name(self) -> str:
-        return f"{self.owner}/{self.name}"
-
-    @computed_field
-    @property
     def clone_path(self) -> str:
         return clone_path(self.platform, self.owner, self.name)
+
+    @classmethod
+    def from_record(
+        cls,
+        record: RepoRecord,
+        *,
+        stats: RepoStats | None = None,
+        snippet: SearchSnippet | None = None,
+    ) -> RepoSummary:
+        return cls(
+            id=record.id,
+            platform=record.platform,
+            owner=record.owner,
+            name=record.name,
+            url=record.url,
+            source=record.source,
+            status=record.status,
+            description=record.description,
+            default_branch=record.default_branch,
+            error_message=record.error_message,
+            added_at=record.added_at,
+            last_synced_at=record.last_synced_at,
+            last_commit_at=record.last_commit_at,
+            last_attempt_at=record.last_attempt_at,
+            consecutive_failures=record.consecutive_failures,
+            stats=stats,
+            snippet=snippet,
+        )
 
 
 class RepoWithStats(BaseModel):
@@ -294,10 +331,3 @@ def parse_repo_url(raw: str) -> RepoIdentity:
     if "/" in rest:
         raise InvalidRepoUrl("仓库地址必须形如 owner/repo 或完整 URL")
     return _from_host_path(PLATFORM_HOSTS[Platform.GITHUB], f"/{candidate}")
-
-
-# Imported at module end to keep the dependency direction obvious: API-only views
-# may reference sync views, while sync models never import repository views.
-from igitdeck.models.sync import SyncRunView  # noqa: E402
-
-RepoDetail.model_rebuild()

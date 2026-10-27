@@ -2,22 +2,11 @@
 
 from __future__ import annotations
 
-import json
-
 from igitdeck.clock import from_epoch, to_epoch
 from igitdeck.db.database import Database
 from igitdeck.models.dashboard import LanguageTotal, Totals
 from igitdeck.models.repo import LanguageStat, RepoStats, SnapshotRecord, TrendPoint
-
-_LATEST_IDS = """
-SELECT repo_id, max(id) AS id
-FROM repo_snapshots
-GROUP BY repo_id
-"""
-
-
-def decode_languages(raw: str) -> list[LanguageStat]:
-    return [LanguageStat.model_validate(item) for item in json.loads(raw)]
+from igitdeck.repositories.sql import LATEST_SNAPSHOT_IDS
 
 
 def _snapshot_record(row) -> SnapshotRecord:
@@ -31,7 +20,7 @@ def _snapshot_record(row) -> SnapshotRecord:
         blank_lines=row["blank_lines"],
         file_count=row["file_count"],
         disk_bytes=row["disk_bytes"],
-        languages=decode_languages(row["languages"]),
+        languages=LanguageStat.decode_many(row["languages"]),
     )
 
 
@@ -40,11 +29,7 @@ class StatsRepository:
         self.db = db
 
     def add_snapshot(self, repo_id: int, stats: RepoStats) -> None:
-        languages = json.dumps(
-            [language.model_dump(mode="json") for language in stats.languages],
-            ensure_ascii=False,
-            separators=(",", ":"),
-        )
+        languages = LanguageStat.encode_many(stats.languages)
         with self.db.transaction() as connection:
             connection.execute(
                 """
@@ -112,7 +97,7 @@ class StatsRepository:
                     coalesce(sum(s.disk_bytes), 0) AS disk_bytes,
                     coalesce(sum(s.file_count), 0) AS file_count
                 FROM repo_snapshots s
-                JOIN ({_LATEST_IDS}) latest ON latest.id = s.id
+                JOIN ({LATEST_SNAPSHOT_IDS}) latest ON latest.id = s.id
                 """
             ).fetchone()
         return Totals(
@@ -130,7 +115,7 @@ class StatsRepository:
                     sum(json_extract(lang.value, '$.code')) AS code_lines,
                     count(DISTINCT s.repo_id) AS repos
                 FROM repo_snapshots s
-                JOIN ({_LATEST_IDS}) latest ON latest.id = s.id,
+                JOIN ({LATEST_SNAPSHOT_IDS}) latest ON latest.id = s.id,
                      json_each(s.languages) AS lang
                 GROUP BY name
                 ORDER BY code_lines DESC, name

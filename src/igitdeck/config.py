@@ -68,6 +68,20 @@ class Settings(BaseModel):
             raise ValueError("IGD_SYNC_RETRY_MAX_MINUTES must be >= IGD_SYNC_RETRY_BASE_MINUTES")
         return self
 
+    @property
+    def sync_stale_after_seconds(self) -> int:
+        """Longest legitimate sync, with slack.
+
+        One run may invoke git twice (fetch + worktree reset) before scc and the
+        optional metadata lookup; anything older than this belongs to a lost task.
+        """
+        return (
+            2 * self.git_timeout_seconds
+            + self.scc_timeout_seconds
+            + self.metadata_timeout_seconds
+            + 300
+        )
+
 
 def load_settings(env_file: Path | str = Path(".env")) -> Settings:
     """Merge process environment over .env. Environment variables win."""

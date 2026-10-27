@@ -5,11 +5,14 @@ from __future__ import annotations
 import sqlite3
 from datetime import datetime
 
+from pydantic import BaseModel, ConfigDict
+
 from igitdeck.clock import from_epoch, to_epoch
 from igitdeck.db.database import Database
 from igitdeck.models.errors import RepoAlreadyExists
 from igitdeck.models.repo import (
-    HighlightSpan,
+    FacetField,
+    LanguageStat,
     Platform,
     RepoIdentity,
     RepoQuery,
@@ -18,11 +21,11 @@ from igitdeck.models.repo import (
     RepoStats,
     RepoStatus,
     RepoWithStats,
-    SearchSnippet,
     SortField,
     SortOrder,
 )
-from igitdeck.repositories.stats import decode_languages
+from igitdeck.repositories.sql import latest_snapshot_join
+from igitdeck.search import SNIPPET_ELLIPSIS, SNIPPET_TOKENS, parse_snippet
 
 _REPO_COLUMNS = (
     "id",
@@ -66,16 +69,16 @@ _SORT_EXPRESSIONS = {
     SortField.NAME: "r.name COLLATE NOCASE",
 }
 
-_LATEST_JOIN = """
-LEFT JOIN repo_snapshots l
-    ON l.id = (SELECT max(s.id) FROM repo_snapshots s WHERE s.repo_id = r.id)
-"""
 
-_HIGHLIGHT_START = "\x01"
-_HIGHLIGHT_END = "\x02"
-_SNIPPET_ELLIPSIS = "…"
-_SNIPPET_TOKENS = 24
-_SNIPPET_MAX_CHARS = 400
+class _ListSource(BaseModel):
+    """FROM clause, extra SELECT columns and their bind parameters."""
+
+    model_config = ConfigDict(frozen=True)
+
+    from_sql: str
+    select_sql: str
+    select_params: tuple[object, ...]
+    where_params: tuple[object, ...]
 
 
 def _repo_select(alias: str = "r") -> str:
@@ -84,41 +87,6 @@ def _repo_select(alias: str = "r") -> str:
 
 def _snapshot_select(alias: str = "l", prefix: str = "") -> str:
     return ", ".join(f"{alias}.{column} AS {prefix}{column}" for column in _SNAPSHOT_COLUMNS)
-
-
-def parse_search_snippet(raw: str | None) -> SearchSnippet | None:
-    """Turn FTS5's marked snippet into plain text plus highlight offsets."""
-    if not raw:
-        return None
-
-    chars: list[str] = []
-    spans: list[HighlightSpan] = []
-    open_at: int | None = None
-    pending_space = False
-
-    for char in raw:
-        if char == _HIGHLIGHT_START:
-            open_at = len(chars)
-            continue
-        if char == _HIGHLIGHT_END:
-            if open_at is not None and len(chars) > open_at:
-                spans.append(HighlightSpan(start=open_at, end=len(chars)))
-            open_at = None
-            continue
-        if char.isspace():
-            pending_space = True
-            continue
-        if pending_space and chars:
-            chars.append(" ")
-        pending_space = False
-        chars.append(char)
-
-    while chars and chars[-1] == " ":
-        chars.pop()
-
-    text = "".join(chars)[:_SNIPPET_MAX_CHARS].rstrip()
-    highlights = [span for span in spans if span.end <= len(text) and span.start < span.end]
-    return SearchSnippet(text=text, highlights=highlights)
 
 
 def _repo_record(row: sqlite3.Row) -> RepoRecord:
@@ -154,7 +122,7 @@ def _stats_from_prefixed_row(row: sqlite3.Row) -> RepoStats | None:
         blank_lines=row["snapshot_blank_lines"],
         file_count=row["snapshot_file_count"],
         disk_bytes=row["snapshot_disk_bytes"],
-        languages=decode_languages(row["snapshot_languages"]),
+        languages=LanguageStat.decode_many(row["snapshot_languages"]),
     )
 
 
@@ -221,58 +189,30 @@ class RepoRepository:
         return _repo_record(row) if row else None
 
     def list_page(self, query: RepoQuery, fts_query: str | None) -> tuple[list[RepoWithStats], int]:
-        clauses: list[str] = []
-        params: list[object] = []
-        fts_join = ""
-        snippet_select = ""
-        snippet_params: list[object] = []
-
-        if fts_query:
-            fts_join = "JOIN repos_fts ON repos_fts.rowid = r.id"
-            snippet_select = ", snippet(repos_fts, -1, char(1), char(2), ?, ?) AS snippet"
-            snippet_params = [_SNIPPET_ELLIPSIS, _SNIPPET_TOKENS]
-            clauses.append("repos_fts MATCH ?")
-            params.append(fts_query)
-        if query.platform is not None:
-            clauses.append("r.platform = ?")
-            params.append(query.platform.value)
-        if query.status is not None:
-            clauses.append("r.status = ?")
-            params.append(query.status.value)
-        if query.source is not None:
-            clauses.append("r.source = ?")
-            params.append(query.source.value)
-        if query.language is not None:
-            clauses.append(
-                "EXISTS (SELECT 1 FROM json_each(COALESCE(l.languages, '[]')) AS lang "
-                "WHERE json_extract(lang.value, '$.name') = ?)"
-            )
-            params.append(query.language)
-
-        where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
-        from_sql = f"FROM repos r {_LATEST_JOIN} {fts_join} {where_sql}"
-
+        source = _list_source(query, fts_query)
         order_sql = self._order_sql(query.sort, query.order)
         offset = (query.page - 1) * query.page_size
 
         with self.db.connection() as connection:
-            total = connection.execute(f"SELECT count(*) {from_sql}", params).fetchone()[0]
+            total = connection.execute(
+                f"SELECT count(*) {source.from_sql}", source.where_params
+            ).fetchone()[0]
             rows = connection.execute(
                 f"""
                 SELECT {_repo_select()}, {_snapshot_select(prefix="snapshot_")}
-                       {snippet_select}
-                {from_sql}
+                       {source.select_sql}
+                {source.from_sql}
                 {order_sql}
                 LIMIT ? OFFSET ?
                 """,
-                [*snippet_params, *params, query.page_size, offset],
+                [*source.select_params, *source.where_params, query.page_size, offset],
             ).fetchall()
 
         items = [
             RepoWithStats(
                 repo=_repo_record(row),
                 stats=_stats_from_prefixed_row(row),
-                snippet=parse_search_snippet(row["snippet"] if fts_query else None),
+                snippet=parse_snippet(row["snippet"] if fts_query else None),
             )
             for row in rows
         ]
@@ -412,11 +352,49 @@ class RepoRepository:
                 )
         return repo_ids
 
-    def counts_by(self, column: str) -> dict[str, int]:
-        if column not in {"platform", "source", "status"}:
-            raise ValueError(f"unsupported facet column: {column}")
+    def counts_by(self, column: FacetField) -> dict[str, int]:
         with self.db.connection() as connection:
             rows = connection.execute(
-                f"SELECT {column} AS value, count(*) AS count FROM repos GROUP BY {column}"
+                f"SELECT {column.value} AS value, count(*) AS count "
+                f"FROM repos GROUP BY {column.value}"
             ).fetchall()
         return {row["value"]: row["count"] for row in rows}
+
+
+def _list_source(query: RepoQuery, fts_query: str | None) -> _ListSource:
+    """Compose the filter/join plan once for both the count and page queries."""
+    joins = [latest_snapshot_join()]
+    clauses: list[str] = []
+    where_params: list[object] = []
+    select_sql = ""
+    select_params: list[object] = []
+
+    if fts_query:
+        joins.append("JOIN repos_fts ON repos_fts.rowid = r.id")
+        select_sql = ", snippet(repos_fts, -1, char(1), char(2), ?, ?) AS snippet"
+        select_params = [SNIPPET_ELLIPSIS, SNIPPET_TOKENS]
+        clauses.append("repos_fts MATCH ?")
+        where_params.append(fts_query)
+    if query.platform is not None:
+        clauses.append("r.platform = ?")
+        where_params.append(query.platform.value)
+    if query.status is not None:
+        clauses.append("r.status = ?")
+        where_params.append(query.status.value)
+    if query.source is not None:
+        clauses.append("r.source = ?")
+        where_params.append(query.source.value)
+    if query.language is not None:
+        clauses.append(
+            "EXISTS (SELECT 1 FROM json_each(COALESCE(l.languages, '[]')) AS lang "
+            "WHERE json_extract(lang.value, '$.name') = ?)"
+        )
+        where_params.append(query.language)
+
+    where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    return _ListSource(
+        from_sql=f"FROM repos r {' '.join(joins)} {where_sql}",
+        select_sql=select_sql,
+        select_params=tuple(select_params),
+        where_params=tuple(where_params),
+    )

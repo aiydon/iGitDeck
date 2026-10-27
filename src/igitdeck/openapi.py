@@ -20,7 +20,7 @@ def main() -> None:
             fetch_metadata=False,
             log_level="ERROR",
         )
-        app = create_app(settings)
+        app = create_app(settings, with_logging=False)
         print(json.dumps(app.openapi(), ensure_ascii=False, indent=2))
 
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from igitdeck.clock import utcnow
 from igitdeck.models.dashboard import LanguageSlice, Overview, StatusSlice
-from igitdeck.models.repo import RepoQuery, RepoStatus, SortField, SortOrder
+from igitdeck.models.repo import FacetField, RepoQuery, RepoStatus, SortField, SortOrder
 from igitdeck.repositories.repos import RepoRepository
 from igitdeck.repositories.stats import StatsRepository
 from igitdeck.repositories.sync_runs import SyncRunRepository
@@ -29,7 +29,7 @@ class DashboardService:
         self.catalog = catalog
 
     def overview(self) -> Overview:
-        status_counts = self.repos.counts_by("status")
+        status_counts = self.repos.counts_by(FacetField.STATUS)
         totals = self.stats.totals()
         language_totals = self.stats.language_totals()
         language_code_total = sum(language.code_lines for language in language_totals)

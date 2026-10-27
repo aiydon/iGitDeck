@@ -1,4 +1,4 @@
-"""Thin sqlite3 wrapper: one connection per transaction, WAL, explicit migrations."""
+"""Thin sqlite3 wrapper: one connection per unit of work, WAL, explicit migrations."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
-from igitdeck.db.schema import SCHEMA_SQL, SCHEMA_VERSION
+from igitdeck.db.schema import SCHEMA_STATEMENTS, SCHEMA_VERSION
 
 
 class Database:
@@ -44,15 +44,30 @@ class Database:
             connection.close()
 
     def migrate(self) -> None:
-        with self.transaction() as connection:
+        """Apply the schema exactly once, atomically, and refuse unknown versions.
+
+        WAL is a database-level pragma and must run outside a transaction;
+        DDL and the version bump then commit together so a crash cannot leave a
+        half-migrated database.
+        """
+        with self.connection() as connection:
             connection.execute("PRAGMA journal_mode = WAL")
-            version = connection.execute("PRAGMA user_version").fetchone()[0]
+            version = self._version(connection)
             if version == SCHEMA_VERSION:
                 return
             if version != 0:
+                relation = "newer than" if version > SCHEMA_VERSION else "older than"
                 raise RuntimeError(
-                    f"database schema v{version} is not supported by this build "
-                    f"(expected v{SCHEMA_VERSION})"
+                    f"database schema v{version} is {relation} this build's v{SCHEMA_VERSION}; "
+                    "restore a matching backup or migrate it explicitly"
                 )
-            connection.executescript(SCHEMA_SQL)
+
+        with self.transaction() as connection:
+            for statement in SCHEMA_STATEMENTS:
+                connection.execute(statement)
             connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+
+    @staticmethod
+    def _version(connection: sqlite3.Connection) -> int:
+        row = connection.execute("PRAGMA user_version").fetchone()
+        return int(row[0])
