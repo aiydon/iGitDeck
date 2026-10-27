@@ -1,7 +1,12 @@
 import { Link } from "react-router-dom";
 
 import type { RepoSummary } from "../../api/client";
-import { compactNumber, formatBytes, relativeTime } from "../../lib/format";
+import {
+  compactNumber,
+  formatBytes,
+  formatDateTime,
+  relativeTime,
+} from "../../lib/format";
 import { PlatformBadge, StatusBadge } from "../Badges";
 import { ArrowUpRightIcon, RefreshIcon } from "../icons";
 import { LanguageBar } from "../LanguageBar";
@@ -24,7 +29,7 @@ export function RepoTable({ items, retryingId, onRetry }: RepoTableProps) {
             <th>语言</th>
             <th className="numeric">代码量</th>
             <th className="numeric">磁盘</th>
-            <th>最近提交</th>
+            <th>更新</th>
             <th>状态</th>
             <th aria-label="操作" />
           </tr>
@@ -74,13 +79,8 @@ export function RepoTable({ items, retryingId, onRetry }: RepoTableProps) {
               <td className="numeric mono">
                 {repo.stats ? formatBytes(repo.stats.disk_bytes) : "—"}
               </td>
-              <td className="cell-time">
+              <td className="cell-time" title={formatDateTime(repo.last_commit_at)}>
                 <span>{repo.last_commit_at ? relativeTime(repo.last_commit_at) : "—"}</span>
-                <span className="cell-sub">
-                  {repo.last_synced_at
-                    ? `同步于 ${relativeTime(repo.last_synced_at)}`
-                    : "尚未同步"}
-                </span>
               </td>
               <td>
                 <StatusBadge status={repo.status} />

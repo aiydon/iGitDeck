@@ -86,7 +86,7 @@ export function trendChartOption(points: TrendPoint[]): EChartsOption {
     xAxis: {
       type: "category",
       boundaryGap: false,
-      data: points.map((point) => formatChartDate(point.captured_at)),
+      data: points.map((point) => formatChartDate(point.committed_at)),
       axisLine: { lineStyle: { color: "rgba(128,136,124,0.24)" } },
       axisTick: { show: false },
       axisLabel: { color: "#8b9288", fontSize: 11, hideOverlap: true },
@@ -105,9 +105,9 @@ export function trendChartOption(points: TrendPoint[]): EChartsOption {
     },
     series: [
       {
-        name: "代码行",
+        name: "跟踪行数",
         type: "line",
-        data: points.map((point) => point.code_lines),
+        data: points.map((point) => point.lines),
         smooth: false,
         symbol: "circle",
         symbolSize: 5,

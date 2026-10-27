@@ -1,5 +1,5 @@
 import type { RepoSummary } from "../../api/client";
-import { formatDateTime } from "../../lib/format";
+import { formatDateTime, shortSha } from "../../lib/format";
 import { platformLabel, sourceLabel } from "../../lib/options";
 import { BranchIcon } from "../icons";
 
@@ -32,12 +32,18 @@ export function MetaPanel({ repo }: { repo: RepoSummary }) {
           <dd>{formatDateTime(repo.added_at)}</dd>
         </div>
         <div>
-          <dt>最后同步</dt>
-          <dd>{formatDateTime(repo.last_synced_at)}</dd>
-        </div>
-        <div>
           <dt>最后提交</dt>
           <dd>{formatDateTime(repo.last_commit_at)}</dd>
+        </div>
+        {repo.stats?.commit_sha && (
+          <div>
+            <dt>镜像提交</dt>
+            <dd className="mono">{shortSha(repo.stats.commit_sha)}</dd>
+          </div>
+        )}
+        <div>
+          <dt>本地镜像</dt>
+          <dd>{formatDateTime(repo.last_synced_at)}</dd>
         </div>
         {repo.consecutive_failures > 0 && (
           <div>

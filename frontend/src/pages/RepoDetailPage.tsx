@@ -325,13 +325,13 @@ export function RepoDetailPage() {
       <section className="panel trend-panel">
         <div className="panel-head">
           <div>
-            <h2>代码量趋势</h2>
+            <h2>行数趋势</h2>
             <p>
               {trend.length > 0
-                ? `最近 ${trend.length} 次同步快照，最新 ${formatNumber(
-                    trend[trend.length - 1]?.code_lines ?? 0,
-                  )} 行`
-                : "同步完成后按提交生成代码量快照。"}
+                ? `${repo.default_branch ?? "main"} 分支 git 历史 · ${
+                    trend.length
+                  } 个提交 · 最新 ${formatNumber(trend[trend.length - 1]?.lines ?? 0)} 行`
+                : "同步完成后按默认分支提交历史生成。"}
             </p>
           </div>
           <span className="panel-badge">
@@ -342,11 +342,11 @@ export function RepoDetailPage() {
         {trend.length === 0 ? (
           <EmptyState
             title="暂无趋势数据"
-            description="成功同步一次后会生成第一个代码量快照。"
+            description="成功同步后按默认分支的提交历史生成趋势。"
             icon={<SparkIcon size={28} />}
           />
         ) : (
-          <EChart option={trendOption} height={280} ariaLabel="代码量趋势图" />
+          <EChart option={trendOption} height={280} ariaLabel="默认分支行数趋势图" />
         )}
       </section>
 
