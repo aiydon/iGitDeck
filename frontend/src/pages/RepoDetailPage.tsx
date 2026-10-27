@@ -533,7 +533,6 @@ export function RepoDetailPage() {
         <div className="panel-head">
           <div>
             <h2>同步历史</h2>
-            <p>最近 {sync_runs.length} 次同步运行，包含定时与手动触发。</p>
           </div>
         </div>
         <HistoryTable runs={sync_runs} />

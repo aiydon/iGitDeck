@@ -27,7 +27,6 @@ export function Layout() {
           <LogoMark />
           <span className="brand-copy">
             <span className="brand-name">iGitDeck</span>
-            <span className="brand-tag">mirror · insight</span>
           </span>
         </Link>
 
@@ -46,14 +45,6 @@ export function Layout() {
           <PlusIcon size={17} />
           <span>添加仓库</span>
         </Link>
-
-        <div className="sidebar-foot">
-          <span className="sidebar-pulse" />
-          <div>
-            <strong>内网镜像</strong>
-            <span>SQLite · 只读 clone</span>
-          </div>
-        </div>
       </aside>
 
       <main className="main">

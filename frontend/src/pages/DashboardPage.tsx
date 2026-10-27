@@ -135,20 +135,7 @@ export function DashboardPage() {
   return (
     <>
       <header className="page-head">
-        <div>
-          <p className="eyebrow">仪表盘</p>
-          <h1>镜像全景</h1>
-          <p className="lede">
-            {formatNumber(data.repo_count)} 个仓库，{formatNumber(data.total_code_lines)} 行代码。
-            数据生成于 {relativeTime(data.generated_at)}。
-          </p>
-        </div>
-        <div className="head-actions">
-          <Link className="button secondary" to="/repos">
-            <RepoIcon size={17} />
-            浏览仓库
-          </Link>
-        </div>
+        <h1>镜像全景</h1>
       </header>
 
       {data.repo_count === 0 ? (
@@ -196,7 +183,6 @@ export function DashboardPage() {
             <div className="panel-head">
               <div>
                 <h2>同步状态</h2>
-                <p>后台同步队列与失败重试的实时分布。</p>
               </div>
               <span className={`live-pill${active ? " active" : ""}`}>
                 <span />
@@ -228,7 +214,7 @@ export function DashboardPage() {
               <div className="panel-head">
                 <div>
                   <h2>语言分布</h2>
-                  <p>按 scc 代码行统计，覆盖全部已同步仓库的最新快照。</p>
+                  <p>scc 代码行统计</p>
                 </div>
                 <Link className="text-link" to="/repos">
                   查看仓库
@@ -280,7 +266,6 @@ export function DashboardPage() {
               <div className="panel-head">
                 <div>
                   <h2>最近同步</h2>
-                  <p>同步队列最近的活动与失败原因。</p>
                 </div>
               </div>
               {data.recent_syncs.length === 0 ? (
@@ -318,7 +303,6 @@ export function DashboardPage() {
             <div className="panel-head">
               <div>
                 <h2>最近添加</h2>
-                <p>最新进入镜像列表的仓库。</p>
               </div>
               <Link className="text-link" to="/repos">
                 全部仓库

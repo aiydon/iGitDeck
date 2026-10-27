@@ -11,17 +11,25 @@ import type {
   SortOrder,
 } from "../api/client";
 import { AddRepoDialog } from "../components/AddRepoDialog";
-import { ArrowUpDownIcon, ArrowUpRightIcon, CloseIcon, PlusIcon, SearchIcon } from "../components/icons";
+import {
+  ArrowUpDownIcon,
+  ArrowUpRightIcon,
+  CloseIcon,
+  PlusIcon,
+  RefreshIcon,
+  SearchIcon,
+} from "../components/icons";
 import { LanguageBar } from "../components/LanguageBar";
 import { PlatformBadge, StatusBadge } from "../components/Badges";
 import { Notice } from "../components/Notice";
 import type { NoticeTone } from "../components/Notice";
 import { Pagination } from "../components/Pagination";
+import { MatchSnippet } from "../components/MatchSnippet";
 import { Spinner } from "../components/Spinner";
 import {
   compactNumber,
+  errorMessage,
   formatBytes,
-  formatNumber,
   relativeTime,
 } from "../lib/format";
 import { useDebouncedValue, useRequest } from "../lib/hooks";
@@ -48,6 +56,7 @@ export function ReposPage() {
   const [params, setParams] = useSearchParams();
   const [addOpen, setAddOpen] = useState(false);
   const [notice, setNotice] = useState<NoticeState | null>(null);
+  const [retrying, setRetrying] = useState<number | null>(null);
 
   const rawQ = params.get("q") ?? "";
   const rawPlatform = params.get("platform");
@@ -170,6 +179,23 @@ export function ReposPage() {
     window.setTimeout(refreshAll, 1500);
   }
 
+  async function retryRepo(repoId: number, fullName: string) {
+    setRetrying(repoId);
+    try {
+      const result = await api.syncRepo(repoId);
+      setNotice({
+        tone: result.queued ? "success" : "info",
+        message: result.queued ? `已重新同步：${fullName}` : result.message ?? "该仓库正在同步",
+      });
+      refreshAll();
+      window.setTimeout(refreshAll, 1500);
+    } catch (cause) {
+      setNotice({ tone: "error", message: errorMessage(cause) });
+    } finally {
+      setRetrying(null);
+    }
+  }
+
   function resetFilters() {
     setParams(new URLSearchParams(), { replace: true });
     setSearchText("");
@@ -187,13 +213,7 @@ export function ReposPage() {
   return (
     <>
       <header className="page-head">
-        <div>
-          <p className="eyebrow">仓库</p>
-          <h1>仓库索引</h1>
-          <p className="lede">
-            按名称、owner、描述与 README 全文检索，快速定位需要镜像的项目。
-          </p>
-        </div>
+        <h1>仓库索引</h1>
         <div className="head-actions">
           <button type="button" className="button primary" onClick={() => setAddOpen(true)}>
             <PlusIcon size={17} />
@@ -410,10 +430,14 @@ export function ReposPage() {
                               <span className="source-hint">trending</span>
                             )}
                           </div>
-                          {repo.description && (
-                            <p className="repo-description" title={repo.description}>
-                              {repo.description}
-                            </p>
+                          {repo.snippet ? (
+                            <MatchSnippet snippet={repo.snippet} />
+                          ) : (
+                            repo.description && (
+                              <p className="repo-description" title={repo.description}>
+                                {repo.description}
+                              </p>
+                            )
                           )}
                           {repo.error_message && (
                             <p className="repo-error-line" title={repo.error_message}>
@@ -448,14 +472,32 @@ export function ReposPage() {
                         <StatusBadge status={repo.status} />
                       </td>
                       <td>
-                        <Link
-                          className="icon-button"
-                          to={`/repos/${repo.id}`}
-                          aria-label={`查看 ${repo.full_name}`}
-                          title="查看详情"
-                        >
-                          <ArrowUpRightIcon size={17} />
-                        </Link>
+                        <div className="row-actions">
+                          {repo.status === "error" && (
+                            <button
+                              type="button"
+                              className="button compact ghost retry-button"
+                              onClick={() => retryRepo(repo.id, repo.full_name)}
+                              disabled={retrying === repo.id}
+                              title="重试同步"
+                            >
+                              {retrying === repo.id ? (
+                                <Spinner label="重试中" />
+                              ) : (
+                                <RefreshIcon size={14} />
+                              )}
+                              重试
+                            </button>
+                          )}
+                          <Link
+                            className="icon-button"
+                            to={`/repos/${repo.id}`}
+                            aria-label={`查看 ${repo.full_name}`}
+                            title="查看详情"
+                          >
+                            <ArrowUpRightIcon size={17} />
+                          </Link>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -472,9 +514,6 @@ export function ReposPage() {
         )}
       </section>
 
-      <p className="list-footnote">
-        已建立 {data ? formatNumber(data.total) : "—"} 个索引仓库 · 支持按 scc 语言与 FTS5 全文检索
-      </p>
 
       {addOpen && <AddRepoDialog onClose={closeAdd} onAdded={handleAdded} />}
     </>

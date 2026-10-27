@@ -252,13 +252,6 @@ a.lang-legend-name:hover {
   color: var(--accent);
 }
 
-.list-footnote {
-  margin-top: 14px;
-  color: var(--faint);
-  font-size: 10.5px;
-  text-align: right;
-}
-
 .list-empty {
   padding: 16px 0 26px;
 }
@@ -845,10 +838,6 @@ a.lang-legend-name:hover {
     padding: 12px 14px;
   }
 
-  .list-footnote {
-    text-align: left;
-  }
-
   .detail-aside {
     grid-template-columns: 1fr;
   }
@@ -896,7 +885,37 @@ a.lang-legend-name:hover {
   }
 
   .repo-table {
-    min-width: 460px;
+    width: 100%;
+    min-width: 0;
+    table-layout: fixed;
+  }
+
+  .repo-table th:nth-child(1) {
+    width: auto;
+  }
+
+  .repo-table th:nth-child(6) {
+    width: 62px;
+  }
+
+  .repo-table th:nth-child(7) {
+    width: 104px;
+  }
+
+  .repo-table th,
+  .repo-table td {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+
+  .repo-table th:first-child,
+  .repo-table td:first-child {
+    padding-left: 14px;
+  }
+
+  .repo-table th:last-child,
+  .repo-table td:last-child {
+    padding-right: 14px;
   }
 
   .repo-table th:nth-child(3),
