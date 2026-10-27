@@ -1,0 +1,102 @@
+:root {
+  color-scheme: light;
+
+  --sans:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  --mono:
+    "SFMono-Regular", "Cascadia Code", "JetBrains Mono", "Fira Code",
+    ui-monospace, monospace;
+
+  --bg: #f3f4ef;
+  --surface: #ffffff;
+  --surface-soft: #f0f2ea;
+  --surface-strong: #f7f8f3;
+  --fg: #1b211c;
+  --fg-soft: #3c473e;
+  --muted: #6b756b;
+  --faint: #949d93;
+  --border: #dde2d6;
+  --border-strong: #c9d1c0;
+
+  --accent: #2f6f4f;
+  --accent-strong: #245a3f;
+  --accent-soft: #e3efe7;
+  --accent-contrast: #f8fbf8;
+
+  --danger: #b34a42;
+  --danger-soft: #f7e7e5;
+  --warning: #96661f;
+  --warning-soft: #f6edd9;
+  --success: #357a54;
+  --success-soft: #e4f1e8;
+  --info: #3c6d8e;
+  --info-soft: #e6f0f5;
+
+  --sidebar: #171f19;
+  --sidebar-fg: #eef2e9;
+  --sidebar-muted: #95a197;
+  --sidebar-hover: #223027;
+  --sidebar-active: #2a3a2f;
+
+  --shadow-sm: 0 1px 2px rgba(24, 32, 25, 0.04);
+  --shadow-md: 0 18px 44px -30px rgba(24, 32, 25, 0.36);
+  --glow: rgba(64, 128, 88, 0.08);
+
+  --radius-sm: 9px;
+  --radius-md: 14px;
+  --radius-lg: 18px;
+  --sidebar-width: 238px;
+  --content-width: 1360px;
+
+  --status-pending: #98a096;
+  --status-syncing: #3c6d8e;
+  --status-ready: #357a54;
+  --status-error: #b34a42;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+
+    --bg: #0e120f;
+    --surface: #161b17;
+    --surface-soft: #1d241e;
+    --surface-strong: #1a211b;
+    --fg: #edf1e9;
+    --fg-soft: #c8d0c6;
+    --muted: #98a399;
+    --faint: #6d796f;
+    --border: #283029;
+    --border-strong: #384239;
+
+    --accent: #6fbf8f;
+    --accent-strong: #8bd5a8;
+    --accent-soft: #1b2d22;
+    --accent-contrast: #0d1710;
+
+    --danger: #e08078;
+    --danger-soft: #2e1d1b;
+    --warning: #d6a85f;
+    --warning-soft: #2a2316;
+    --success: #7cc79b;
+    --success-soft: #17281e;
+    --info: #82b4d4;
+    --info-soft: #16242c;
+
+    --sidebar: #090c0a;
+    --sidebar-fg: #eef2e9;
+    --sidebar-muted: #8f9b91;
+    --sidebar-hover: #151d17;
+    --sidebar-active: #1d2921;
+
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
+    --shadow-md: 0 24px 60px -38px rgba(0, 0, 0, 0.7);
+    --glow: rgba(70, 150, 100, 0.1);
+
+    --status-pending: #7f8b81;
+    --status-syncing: #82b4d4;
+    --status-ready: #7cc79b;
+    --status-error: #e08078;
+  }
+}

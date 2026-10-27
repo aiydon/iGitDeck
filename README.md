@@ -1,0 +1,279 @@
+# iGitDeck
+
+内网自用的 Git 仓库镜像与代码洞察看板。自动发现并同步公开仓库，提供代码统计、全文检索、README 预览和只读 clone 服务。
+
+```text
+GitHub Trending ──HTTP──▶ 爬虫进程
+                             │ POST /api/repos
+                             ▼
+浏览器 ◀── React SPA ── FastAPI ──▶ SQLite (WAL)
+                             │
+                             ├──▶ git clone/fetch + worktree
+                             ├──▶ scc 代码统计
+                             └──▶ git http-backend（只读 smart HTTP）
+```
+
+## 快速开始
+
+环境要求：
+
+- Linux / macOS
+- Python 3.12（`uv` 会自动准备虚拟环境）
+- [bun](https://bun.sh/)（构建前端）
+- git
+- [scc](https://github.com/boyter/scc) v4.1.0（`make install` 会在系统没有 `scc` 时下载固定版本到 `bin/scc`，并校验 SHA-256）
+
+```bash
+make install   # uv sync + bun install + scc + .env + 生成 API 类型 + 构建前端
+make run       # uvicorn，监听 .env 中的 IGD_HOST:IGD_PORT
+```
+
+打开 `http://127.0.0.1:8000/`。API 文档在 `/docs`。
+
+首次启动会自动创建 `./data`、SQLite 数据库，并启动后台同步调度器。添加第一个仓库后即可看到统计、趋势与 README。
+
+## 功能
+
+- **自动发现**：独立爬虫进程抓取 GitHub Trending，通过 `POST /api/repos` 加入同步列表；也支持页面手动添加。
+- **镜像同步**：按 `平台/owner/repo` 落盘为 bare 镜像；定时 fetch、更新默认分支、刷新工作区。同仓库互斥，失败按指数退避重试。
+- **代码统计**：`scc --format json --percent` 统计代码/注释/空行/文件数/语言占比，并记录镜像与工作区磁盘占用。
+- **检索**：SQLite FTS5 索引仓库名、owner、描述和 README 纯文本。
+- **README 预览**：Markdown 渲染、相对链接与图片重写、后端 HTML 清洗、raw 文件按仓库内路径安全读取。
+- **只读 clone**：`git http-backend` 暴露 smart HTTP，`upload-pack` 有并发上限和超时。
+- **看板**：全局总览、状态分布、语言分布、仓库筛选/排序/分页、详情统计卡片、ECharts 代码量趋势、同步历史。
+- **工程化**：前后端分离，前端 TypeScript 类型由后端 OpenAPI 生成；所有 SQL 集中在 repository 层；配置只来自 `.env`。
+
+## 使用
+
+### 添加与同步
+
+页面右上角或侧栏的「添加仓库」支持：
+
+- `https://github.com/owner/repo`
+- `git@github.com:owner/repo.git`
+- `ssh://git@gitlab.com/owner/repo.git`
+- `owner/repo`（默认 GitHub）
+- GitHub / GitLab / Gitee / Bitbucket 的公开仓库
+
+仓库加入后写入 SQLite，调度器在后台 clone。详情页「立即同步」可手动触发；失败原因会显示在列表、详情和同步历史中。
+
+### 检索与筛选
+
+列表页支持：
+
+- FTS5 全文检索：仓库名、owner、描述、README 纯文本
+- 筛选：平台、scc 语言、状态、来源（手动 / Trending）
+- 排序：添加时间、最后同步、最后提交、代码量、磁盘占用、仓库名
+- 分页与 URL 状态同步（筛选条件可直接分享）
+
+### Clone
+
+已完成同步的仓库可通过只读 smart HTTP 克隆：
+
+```bash
+git clone http://<host>:8000/git/github/owner/repo.git
+```
+
+不提供 `receive-pack`，也不支持私有仓库或鉴权，符合内网信任模型。
+
+### Trending 爬虫
+
+爬虫是独立进程，只通过 HTTP 调用主进程，不直接访问数据库：
+
+```bash
+make crawler                 # 常驻循环，按 IGD_CRAWLER_INTERVAL_MINUTES 抓取
+make crawl-once              # 单次抓取并提交
+uv run python -m igitdeck.crawler --once --dry-run   # 只打印发现结果
+```
+
+`IGD_CRAWLER_LANGUAGES=python,rust` 可抓取指定语言；空值表示全语言。`IGD_CRAWLER_SINCE` 支持 `daily`、`weekly`、`monthly`。
+
+cron 示例：
+
+```cron
+17 6 * * * cd /srv/iGitDeck && /usr/local/bin/uv run python -m igitdeck.crawler --once >> /var/log/igiddeck-crawler.log 2>&1
+```
+
+## 架构
+
+### 分层与依赖方向
+
+```text
+config → models → repositories → services → api
+              ↘ paths / git / clock（基础设施）
+crawler → config / models（仅 HTTP 契约，不依赖业务服务）
+```
+
+- **配置**：`config.py` 从单一 `.env` 构造不可变的 `Settings`，不读 YAML/TOML。
+- **模型**：`models/` 只放 Pydantic v2 领域与 API 契约；没有 ORM、没有 dataclass 数据模型。
+- **数据访问**：`repositories/` 集中全部查询 SQL；`db/schema.py` 是唯一 DDL 来源。
+- **业务服务**：`services/` 组织用例；不读环境变量，依赖通过构造函数注入。
+- **HTTP 层**：`api/routes/` 仅做参数/响应转换与依赖注入，不写 SQL 或业务规则。
+- **组合根**：`main.py` 负责装配容器、生命周期、SPA 静态文件和 uvicorn 入口。
+
+### 目录
+
+```text
+src/igitdeck/
+  config.py              # .env → Settings（28 项配置）
+  urls.py                # clone / raw URL 形状
+  paths.py               # 数据目录布局 + 路径越界防护
+  clock.py               # SQLite 时间戳转换
+  git.py                 # 所有 git 子进程（统一 timeout）
+  models/                # Pydantic 契约：仓库、快照、同步、看板
+  db/                    # sqlite3 连接、WAL、FTS5 schema、迁移版本
+  repositories/          # repos / repo_snapshots / sync_runs 的 SQL
+  services/
+    sync.py              # clone → fetch → worktree → scc → README → 快照
+    coordinator.py       # 并发上限 + 同仓库互斥
+    scheduler.py         # 到期选择 + tqdm 批量进度
+    policy.py            # 定时/失败重试退避（纯函数）
+    stats_collector.py   # scc 调用与语言归一化
+    readme.py            # README 发现、渲染、链接重写、清洗
+    catalog.py           # 添加/列表/详情/筛选/删除
+    dashboard.py         # 全局聚合
+    files.py             # raw 文件安全解析
+    git_http.py          # git http-backend 流式响应
+    metadata.py          # 可选 GitHub 描述补全
+    search.py            # 用户输入 → 严格 FTS5 查询
+    container.py         # 显式依赖装配
+  api/                   # FastAPI 路由与错误映射
+  crawler/               # GitHub Trending 解析 + HTTP 提交
+  main.py                # app factory / lifespan / SPA
+  openapi.py             # 导出前端类型契约
+frontend/
+  src/api/schema.d.ts    # 由 `make types` 从 OpenAPI 生成（不手写）
+  src/pages/             # 仪表盘 / 仓库列表 / 仓库详情
+  src/components/        # 图表、徽章、对话框、分页等
+  src/styles/            # tokens / base / layout / components / pages
+tests/                   # 单元 + API + 真实 git HTTP clone 集成测试
+scripts/install_scc.py   # 固定版本 scc 下载与校验
+.githooks/commit-msg     # 可选提交规范 hook
+```
+
+### 数据与落盘
+
+```text
+data/
+  igiddeck.db                 # SQLite（WAL）+ FTS5
+  repos/<platform>/<owner>/<repo>.git
+  worktrees/<platform>/<owner>/<repo>/
+```
+
+- 仓库列表的事实来源是 SQLite，不是配置文件。
+- 统计快照、同步运行日志都在数据库中；磁盘占用与派生字段实时计算。
+- bare 镜像用于对外 clone；独立 worktree 用于 scc、README 与 raw 文件，两者共享对象库。
+- 所有从 HTTP 参数拼出的路径都会 `resolve()` 后校验仍在仓库根内。
+
+### 核心表
+
+| 表 | 用途 |
+|---|---|
+| `repos` | 仓库身份、状态、描述、README 索引文本、分支、最后同步/提交、失败次数 |
+| `repo_snapshots` | 每次成功同步的代码/注释/空行/文件数/磁盘/语言占比 JSON |
+| `sync_runs` | 每次同步的开始/结束、触发方式、成功失败、commit、消息 |
+| `repos_fts` | FTS5 external-content 表，触发器同步 owner/name/描述/README |
+
+### Web 进程
+
+`create_app()` 是唯一组合根。启动时：
+
+1. 创建数据目录、执行 schema 迁移；
+2. 把上次进程中断的 `syncing` 状态恢复为 `pending`，中断的同步记录标记失败；
+3. `IGD_AUTO_SYNC=true` 时启动调度器；
+4. 挂载 API、OpenAPI、只读 smart HTTP、React SPA 与 `/assets` 静态资源。
+
+## 配置
+
+所有配置集中在 `.env`，完整清单和默认值见 [`.env.example`](.env.example)。常用项：
+
+| 变量 | 默认值 | 说明 |
+|---|---|---|
+| `IGD_HOST` / `IGD_PORT` | `0.0.0.0` / `8000` | Web 监听地址 |
+| `IGD_DATA_DIR` | `./data` | SQLite、镜像与工作区根目录 |
+| `IGD_AUTO_SYNC` | `true` | 启动调度器并立即同步新仓库 |
+| `IGD_SYNC_CONCURRENCY` | `4` | 同时同步的仓库数上限 |
+| `IGD_SYNC_INTERVAL_MINUTES` | `60` | 就绪仓库刷新周期 |
+| `IGD_SYNC_RETRY_BASE_MINUTES` / `_MAX_MINUTES` | `5` / `120` | 失败重试指数退避与上限 |
+| `IGD_GIT_TIMEOUT_SECONDS` | `900` | clone/fetch/worktree 超时 |
+| `IGD_GIT_HTTP_CONCURRENCY` | `4` | upload-pack 并发上限 |
+| `IGD_GIT_HTTP_MAX_REQUEST_BYTES` | `8388608` | upload-pack 请求体（含解压后）上限，超出返回 413 |
+| `IGD_SCC_BINARY` / `IGD_SCC_TIMEOUT_SECONDS` | `scc` / `300` | scc 路径与超时 |
+| `IGD_FETCH_METADATA` | `true` | 手动添加时通过 GitHub API 补全描述（失败不影响添加） |
+| `IGD_CRAWLER_API_BASE_URL` | `http://127.0.0.1:8000` | 爬虫调用主进程的地址 |
+| `IGD_CRAWLER_LANGUAGES` / `IGD_CRAWLER_SINCE` | 空 / `daily` | Trending 语言与时间范围 |
+
+环境变量优先于 `.env`。`make install` 在 `.env` 不存在时会复制 `.env.example`。
+
+## HTTP API
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| `GET` | `/api/overview` | 仪表盘聚合 |
+| `GET` | `/api/filters` | 平台/语言/状态/来源 facets |
+| `GET` | `/api/repos` | 列表、FTS 搜索、筛选、排序、分页 |
+| `POST` | `/api/repos` | 添加仓库（`url`, 可选 `source`, `description`） |
+| `GET` | `/api/repos/{id}` | 详情：最新统计、README、趋势、同步历史 |
+| `POST` | `/api/repos/{id}/sync` | 手动同步（202，重复触发返回 `queued=false`） |
+| `DELETE` | `/api/repos/{id}` | 删除数据库记录与磁盘镜像 |
+| `GET` | `/api/repos/{id}/raw/{path}` | 工作区内 raw 文件（README 图片/链接） |
+| `GET` | `/api/health` | 健康检查 |
+| `GET/POST` | `/git/{platform}/{owner}/{repo}/info/refs`、`/git-upload-pack` | 只读 smart HTTP |
+
+完整契约由 FastAPI 生成：`/docs`、`/openapi.json`。前端类型通过
+
+```bash
+make types   # 导出 OpenAPI → frontend/openapi.json → src/api/schema.d.ts
+```
+
+从后端单一事实来源生成，不在前端重复维护接口类型。
+
+## 开发
+
+```bash
+make test        # 后端测试（含真实 git smart HTTP clone）
+make lint        # ruff + 前端 tsc
+make format      # ruff format/fix
+make typecheck   # 仅前端类型检查
+make build       # 重新生成 API 类型并构建前端到 frontend/dist
+make types       # 仅重新生成前端 API 类型
+make api-dev     # 后端 uvicorn --reload :8000
+make web-dev     # Vite :5173，代理 /api 与 /git
+make hooks       # 安装可选 commit-msg hook
+```
+
+后端测试使用临时目录，不读写 `./data`。前端开发服务器代理到 `127.0.0.1:8000`。
+
+### 提交规范
+
+采用 gitmoji + 英文 type + 中文描述：
+
+```text
+:sparkles: feat(api): 增加仓库同步接口
+🐛 fix(sync): 修复默认分支变化后的 worktree 更新
+```
+
+`make hooks` 会设置 `core.hooksPath=.githooks`，启用可选校验。该 hook 允许 `Merge`、`Revert` 与 fixup 提交。
+
+## 设计取舍
+
+- **内网信任模型**：不做用户、权限、token、限流；只读 clone 仍限制为 `upload-pack`。
+- **SQLite 足够**：单进程写、WAL 并发读，避免引入额外组件；repository 层集中 SQL。
+- **派生值不落库**：总代码量、语言百分比、状态计数和筛选 facets 均从最新快照实时聚合；只有昂贵的统计快照与同步日志持久化。
+- **快照即历史**：每次成功同步写入一条 `repo_snapshots`，详情趋势直接读取最近 60 条。
+- **scc 单一事实来源**：语言名称与 `CodePercent` 直接来自 scc v4 JSON；前后端不维护第二套语言归一化。
+- **显式依赖**：服务通过构造函数注入，容器只在 `main.py` 装配；爬虫不 import 业务层。
+- **内容边界**：README 经 bleach 清洗；raw 文件响应带 `CSP sandbox` / `nosniff` 且拒绝 `.git` 指针；smart HTTP 请求体有硬上限，clone 权限仅为 `upload-pack`。
+- **无容器**：uvicorn 主进程 + 独立爬虫进程；Makefile 是唯一构建入口。
+
+## 已知限制
+
+- 仅公开仓库；不支持私有仓库、鉴权、多用户、Webhook、代码内容全文检索。
+- GitLab 子组仓库（路径超过 `group/repo` 两段）暂不支持。
+- README 仅支持 Markdown 渲染；`.rst` / `.txt` 以纯文本显示。外部图片依赖出网访问。
+- scc 解析按 v4 JSON 输出编写；如需其他版本，请设置 `IGD_SCC_BINARY` 并确认输出字段。
+- 可选功能（提交热力图、Top contributors、文件树、语法高亮、License 检测、RSS 等）未实现。
+
+## License
+
+内部使用项目，未指定开源许可证。

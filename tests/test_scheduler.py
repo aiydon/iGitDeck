@@ -1,0 +1,107 @@
+from __future__ import annotations
+
+import asyncio
+from datetime import UTC, datetime, timedelta
+from typing import ClassVar
+
+import pytest
+
+import igitdeck.services.scheduler as scheduler_module
+from igitdeck.models.repo import Platform, RepoIdentity, RepoSource
+from igitdeck.models.sync import SyncTrigger
+from igitdeck.services.container import Container
+from igitdeck.services.policy import SyncPolicy
+from igitdeck.services.scheduler import SyncScheduler
+
+
+class DummyBar:
+    instances: ClassVar[list[DummyBar]] = []
+
+    def __init__(self, *args, **kwargs) -> None:
+        self.total = kwargs.get("total")
+        self.updated = 0
+        DummyBar.instances.append(self)
+
+    def __enter__(self) -> DummyBar:
+        return self
+
+    def __exit__(self, *args) -> None:
+        return None
+
+    def update(self, amount: int) -> None:
+        self.updated += amount
+
+
+class FakeCoordinator:
+    def __init__(self) -> None:
+        self.requested: list[tuple[int, SyncTrigger]] = []
+
+    def request(self, repo_id: int, trigger: SyncTrigger):
+        self.requested.append((repo_id, trigger))
+
+        async def complete() -> None:
+            return None
+
+        return asyncio.create_task(complete())
+
+
+def make_repo(container: Container, name: str):
+    return container.repos.add(
+        RepoIdentity(
+            platform=Platform.GITHUB,
+            owner="local",
+            name=name,
+            url=f"https://github.com/local/{name}.git",
+        ),
+        source=RepoSource.MANUAL,
+        description=None,
+        added_at=datetime.now(UTC),
+    )
+
+
+def mark_ready(container: Container, repo_id: int, attempted_at: datetime) -> None:
+    container.repos.mark_syncing(repo_id, attempted_at)
+    container.repos.mark_success(
+        repo_id,
+        synced_at=attempted_at,
+        default_branch="main",
+        last_commit_at=attempted_at,
+        readme_path=None,
+        readme_text=None,
+        description=None,
+    )
+
+
+def test_scheduler_tick_requests_due_repositories(
+    container: Container, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    now = datetime.now(UTC)
+    pending = make_repo(container, "pending")
+    stale = make_repo(container, "stale")
+    fresh = make_repo(container, "fresh")
+    mark_ready(container, stale.id, now - timedelta(hours=2))
+    mark_ready(container, fresh.id, now)
+
+    monkeypatch.setattr(scheduler_module, "tqdm", DummyBar)
+    DummyBar.instances.clear()
+    coordinator = FakeCoordinator()
+    scheduler = SyncScheduler(
+        coordinator=coordinator,
+        repos=container.repos,
+        policy=SyncPolicy(
+            interval_seconds=3600,
+            retry_base_seconds=300,
+            retry_max_seconds=1200,
+        ),
+        poll_seconds=15,
+        batch_size=10,
+    )
+
+    asyncio.run(scheduler.tick())
+
+    requested = {repo_id for repo_id, _ in coordinator.requested}
+    assert requested == {pending.id, stale.id}
+    assert all(trigger is SyncTrigger.SCHEDULED for _, trigger in coordinator.requested)
+    assert len(DummyBar.instances) == 1
+    assert DummyBar.instances[0].total == 2
+    assert DummyBar.instances[0].updated == 2
