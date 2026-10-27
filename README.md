@@ -140,13 +140,14 @@ src/igitdeck/
   git.py                 # 所有 git 子进程（统一 timeout）
   models/                # Pydantic 契约：仓库、快照、同步、看板
   db/                    # sqlite3 连接、WAL、FTS5 schema、原子迁移
-  repositories/          # repos / repo_snapshots / sync_runs 的 SQL + 共享片段
+  repositories/          # repos / snapshots / runs / trends 的 SQL + 共享片段
   services/
     sync.py              # clone → fetch → worktree → scc → README → 快照
     coordinator.py       # 并发上限 + 同仓库互斥
     scheduler.py         # 到期选择 + tqdm 批量进度
     policy.py            # 定时/失败重试退避（纯函数）
     stats_collector.py   # scc 调用与语言归一化
+    trends.py            # 从 git 提交历史重建行数趋势
     readme.py            # README 发现、渲染、链接重写、清洗
     catalog.py           # 添加/列表/详情/筛选/删除
     dashboard.py         # 全局聚合
@@ -188,8 +189,9 @@ data/
 | 表 | 用途 |
 |---|---|
 | `repos` | 仓库身份、状态、描述、README 索引文本、分支、最后同步/提交、失败次数 |
-| `repo_snapshots` | 每次成功同步的代码/注释/空行/文件数/磁盘/语言占比 JSON |
-| `sync_runs` | 每次同步的开始/结束、触发方式、成功失败、commit、消息 |
+| `repo_snapshots` | 每个仓库仅保留当前提交的代码/注释/空行/文件数/磁盘/语言占比 |
+| `repo_trends` | 默认分支的 git 行数历史（按提交聚合，最多 120 个绘图点） |
+| `sync_runs` | 最近 50 次同步的开始/结束、触发方式、成功失败、commit、消息 |
 | `repos_fts` | FTS5 external-content 表，触发器同步 owner/name/描述/README |
 
 ### Web 进程
@@ -279,7 +281,10 @@ make hooks       # 安装可选 commit-msg hook
 - **内网信任模型**：不做用户、权限、token、限流；只读 clone 仍限制为 `upload-pack`。
 - **SQLite 足够**：单进程写、WAL 并发读，避免引入额外组件；repository 层集中 SQL。
 - **派生值不落库**：总代码量、语言百分比、状态计数和筛选 facets 均从最新快照实时聚合；只有昂贵的统计快照与同步日志持久化。
-- **快照即历史**：每次成功同步写入一条 `repo_snapshots`，详情趋势直接读取最近 60 条。
+- **git 是趋势的事实来源**：`repo_trends` 由默认分支的 `git log --numstat` 生成，不随同步频率漂移；`repo_snapshots` 只保留当前提交的一份统计，趋势不再依赖快照历史。
+- **按需补算**：升级或首次访问时，若当前提交尚无趋势，详情请求在线程池中按镜像生成本地趋势并落库；之后的请求直接读取。
+- **更新时间只看提交**：列表与详情以 git 最后一次提交作为“更新”时间；本地同步时间单独标注为“本地镜像”。
+- **提交级一致性**：`repos.commit_sha` 记录已镜像的提交，统计快照与趋势仅在 commit 匹配时展示；同步记录按仓库保留最近 50 条。
 - **scc 单一事实来源**：语言名称与 `CodePercent` 直接来自 scc v4 JSON；前后端不维护第二套语言归一化。
 - **显式依赖**：服务通过构造函数注入，容器只在 `main.py` 装配；爬虫不 import 业务层。
 - **内容边界**：README 经 bleach 清洗；raw 文件响应带 `CSP sandbox` / `nosniff` 且拒绝 `.git` 指针；smart HTTP 请求体有硬上限，clone 权限仅为 `upload-pack`。
@@ -293,6 +298,7 @@ make hooks       # 安装可选 commit-msg hook
 - GitLab 子组仓库（路径超过 `group/repo` 两段）暂不支持。
 - README 仅支持 Markdown 渲染；`.rst` / `.txt` 以纯文本显示。外部图片依赖出网访问。
 - scc 解析按 v4 JSON 输出编写；如需其他版本，请设置 `IGD_SCC_BINARY` 并确认输出字段。
+- 行数趋势统计的是 git 跟踪的文本行（含文档、配置），不等于 scc 代码行；提交数超过 2 万的历史会跳过趋势，避免拖慢同步。
 - 超大仓库（GB 级）clone 可达数十分钟，期间列表页处于“同步中”，属预期；超过最长同步时间会被判定失败并按退避重试。
 - 可选功能（提交热力图、Top contributors、文件树、语法高亮、License 检测、RSS 等）未实现。
 
