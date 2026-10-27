@@ -1,5 +1,5 @@
 import type { EChartsOption } from "echarts";
-import { useEffect, useMemo } from "react";
+import { useMemo } from "react";
 import { Link } from "react-router-dom";
 
 import { api } from "../api/client";
@@ -18,7 +18,7 @@ import {
   formatPercent,
   relativeTime,
 } from "../lib/format";
-import { useRequest } from "../lib/hooks";
+import { useLiveRefresh, useRequest } from "../lib/hooks";
 import { languageColor } from "../lib/languageColor";
 import { repoStatusLabel, syncTriggerLabel } from "../lib/options";
 
@@ -63,11 +63,7 @@ export function DashboardPage() {
     ),
   );
 
-  useEffect(() => {
-    if (!active) return;
-    const timer = window.setInterval(refresh, 4000);
-    return () => window.clearInterval(timer);
-  }, [active, refresh]);
+  useLiveRefresh(active, refresh);
 
   const donutData = useMemo(() => buildDonutData(data?.languages ?? []), [data?.languages]);
 

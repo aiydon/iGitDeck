@@ -48,7 +48,7 @@ import {
   relativeTime,
   shortSha,
 } from "../lib/format";
-import { useRequest } from "../lib/hooks";
+import { useLiveRefresh, useRequest } from "../lib/hooks";
 import { languageColor } from "../lib/languageColor";
 import { platformLabel, sourceLabel, syncTriggerLabel } from "../lib/options";
 
@@ -168,11 +168,7 @@ export function RepoDetailPage() {
   const [copied, setCopied] = useState(false);
 
   const syncing = data?.repo.status === "syncing";
-  useEffect(() => {
-    if (!syncing) return;
-    const timer = window.setInterval(refresh, 3000);
-    return () => window.clearInterval(timer);
-  }, [syncing, refresh]);
+  useLiveRefresh(syncing, refresh, { fastIntervalMs: 3000 });
 
   const trendOption = useMemo(
     () => buildTrendOption(data?.trend ?? []),

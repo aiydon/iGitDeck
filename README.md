@@ -282,6 +282,8 @@ make hooks       # 安装可选 commit-msg hook
 - **scc 单一事实来源**：语言名称与 `CodePercent` 直接来自 scc v4 JSON；前后端不维护第二套语言归一化。
 - **显式依赖**：服务通过构造函数注入，容器只在 `main.py` 装配；爬虫不 import 业务层。
 - **内容边界**：README 经 bleach 清洗；raw 文件响应带 `CSP sandbox` / `nosniff` 且拒绝 `.git` 指针；smart HTTP 请求体有硬上限，clone 权限仅为 `upload-pack`。
+- **轮询克制**：列表/详情只在存在同步中仓库且标签页可见时轮询（先 4s，1 分钟后降到 10s），标签页隐藏即停止，避免长 clone 期间刷满访问日志。
+- **状态兜底**：调度器每轮回收停留超过“两次 git 超时 + scc 超时”的 `syncing` 行并标记失败，线程意外消失也不会永久卡住轮询与重试。
 - **无容器**：uvicorn 主进程 + 独立爬虫进程；Makefile 是唯一构建入口。
 
 ## 已知限制
@@ -290,6 +292,7 @@ make hooks       # 安装可选 commit-msg hook
 - GitLab 子组仓库（路径超过 `group/repo` 两段）暂不支持。
 - README 仅支持 Markdown 渲染；`.rst` / `.txt` 以纯文本显示。外部图片依赖出网访问。
 - scc 解析按 v4 JSON 输出编写；如需其他版本，请设置 `IGD_SCC_BINARY` 并确认输出字段。
+- 超大仓库（GB 级）clone 可达数十分钟，期间列表页处于“同步中”，属预期；超过最长同步时间会被判定失败并按退避重试。
 - 可选功能（提交热力图、Top contributors、文件树、语法高亮、License 检测、RSS 等）未实现。
 
 ## License

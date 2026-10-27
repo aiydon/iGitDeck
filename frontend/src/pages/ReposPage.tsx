@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 
 import { api } from "../api/client";
@@ -32,7 +32,7 @@ import {
   formatBytes,
   relativeTime,
 } from "../lib/format";
-import { useDebouncedValue, useRequest } from "../lib/hooks";
+import { useDebouncedValue, useLiveRefresh, useRequest } from "../lib/hooks";
 import {
   PLATFORM_OPTIONS,
   SORT_OPTIONS,
@@ -138,11 +138,14 @@ export function ReposPage() {
   }, [refresh, refreshFilters]);
 
   const syncing = data?.items.some((repo) => repo.status === "syncing") ?? false;
+  // Poll only the list; facet counts are refreshed once a sync finishes.
+  useLiveRefresh(syncing, refresh);
+
+  const wasSyncing = useRef(false);
   useEffect(() => {
-    if (!syncing) return;
-    const timer = window.setInterval(refreshAll, 4000);
-    return () => window.clearInterval(timer);
-  }, [syncing, refreshAll]);
+    if (wasSyncing.current && !syncing) refreshFilters();
+    wasSyncing.current = syncing;
+  }, [syncing, refreshFilters]);
 
   useEffect(() => {
     if (data && data.pages > 0 && page > data.pages) {

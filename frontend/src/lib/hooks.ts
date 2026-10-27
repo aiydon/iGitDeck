@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { errorMessage } from "./format";
 
@@ -17,25 +17,27 @@ export function useRequest<T>(
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [version, setVersion] = useState(0);
+  const hasData = useRef(false);
+  const requestId = useRef(0);
 
   useEffect(() => {
-    let active = true;
-    setLoading(true);
+    // Responses may resolve out of order during polling; only the newest wins.
+    requestId.current += 1;
+    const current = requestId.current;
+    setLoading(!hasData.current);
     setError(null);
     loader()
       .then((result) => {
-        if (!active) return;
+        if (current !== requestId.current) return;
+        hasData.current = true;
         setData(result);
         setLoading(false);
       })
       .catch((cause: unknown) => {
-        if (!active) return;
+        if (current !== requestId.current) return;
         setError(errorMessage(cause));
         setLoading(false);
       });
-    return () => {
-      active = false;
-    };
     // The caller owns the dependency list; loader is intentionally not included.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [...deps, version]);
@@ -51,4 +53,58 @@ export function useDebouncedValue<T>(value: T, delay: number): T {
     return () => window.clearTimeout(timer);
   }, [value, delay]);
   return debounced;
+}
+
+export interface LiveRefreshOptions {
+  fastIntervalMs?: number;
+  slowIntervalMs?: number;
+  slowAfterMs?: number;
+}
+
+/**
+ * Poll only while `enabled` and the tab is visible.
+ *
+ * Long syncs (multi-GB clones) would otherwise keep hitting the API in a
+ * background tab forever, flooding access logs for nothing.
+ */
+export function useLiveRefresh(
+  enabled: boolean,
+  refresh: () => void,
+  {
+    fastIntervalMs = 4000,
+    slowIntervalMs = 10000,
+    slowAfterMs = 60000,
+  }: LiveRefreshOptions = {},
+): void {
+  useEffect(() => {
+    if (!enabled) return;
+    const startedAt = Date.now();
+    let timer = 0;
+
+    const schedule = () => {
+      const elapsed = Date.now() - startedAt;
+      const interval = elapsed < slowAfterMs ? fastIntervalMs : slowIntervalMs;
+      timer = window.setTimeout(tick, interval);
+    };
+
+    const tick = () => {
+      if (document.visibilityState === "visible") {
+        refresh();
+      }
+      schedule();
+    };
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        refresh();
+      }
+    };
+
+    schedule();
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      window.clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [enabled, refresh, fastIntervalMs, slowIntervalMs, slowAfterMs]);
 }
