@@ -136,10 +136,11 @@ src/igitdeck/
   urls.py                # clone / raw URL 形状
   paths.py               # 数据目录布局 + 路径越界防护
   clock.py               # SQLite 时间戳转换
+  search.py              # FTS5 查询构造 + 命中片段解析
   git.py                 # 所有 git 子进程（统一 timeout）
   models/                # Pydantic 契约：仓库、快照、同步、看板
-  db/                    # sqlite3 连接、WAL、FTS5 schema、迁移版本
-  repositories/          # repos / repo_snapshots / sync_runs 的 SQL
+  db/                    # sqlite3 连接、WAL、FTS5 schema、原子迁移
+  repositories/          # repos / repo_snapshots / sync_runs 的 SQL + 共享片段
   services/
     sync.py              # clone → fetch → worktree → scc → README → 快照
     coordinator.py       # 并发上限 + 同仓库互斥
@@ -152,7 +153,6 @@ src/igitdeck/
     files.py             # raw 文件安全解析
     git_http.py          # git http-backend 流式响应
     metadata.py          # 可选 GitHub 描述补全
-    search.py            # 用户输入 → 严格 FTS5 查询
     container.py         # 显式依赖装配
   api/                   # FastAPI 路由与错误映射
   crawler/               # GitHub Trending 解析 + HTTP 提交
@@ -160,8 +160,9 @@ src/igitdeck/
   openapi.py             # 导出前端类型契约
 frontend/
   src/api/schema.d.ts    # 由 `make types` 从 OpenAPI 生成（不手写）
-  src/pages/             # 仪表盘 / 仓库列表 / 仓库详情
-  src/components/        # 图表、徽章、对话框、分页等
+  src/pages/             # 仪表盘 / 仓库列表 / 仓库详情（仅做编排）
+  src/components/        # 通用组件；repo/ 下为仓库列表与详情面板
+  src/lib/               # 查询状态、图表配置、格式化、Hooks
   src/styles/            # tokens / base / layout / components / pages
 tests/                   # 单元 + API + 真实 git HTTP clone 集成测试
 scripts/install_scc.py   # 固定版本 scc 下载与校验

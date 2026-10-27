@@ -70,7 +70,8 @@ test:
 	uv run pytest
 
 lint:
-	uv run ruff check src tests
+	uv run ruff check src tests scripts
+	uv run ruff format --check src tests scripts
 	$(MAKE) typecheck
 
 format:
