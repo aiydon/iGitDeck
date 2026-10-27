@@ -24,8 +24,10 @@ from igitdeck.models.repo import (
     RepoQuery,
     RepoRecord,
     RepoSource,
+    RepoStats,
     RepoStatus,
     RepoSummary,
+    TrendPoint,
     parse_repo_url,
 )
 from igitdeck.paths import StoragePaths
@@ -35,10 +37,10 @@ from igitdeck.repositories.sync_runs import SyncRunRepository
 from igitdeck.search import build_fts_query
 from igitdeck.services.metadata import MetadataClient
 from igitdeck.services.readme import ReadmeService
+from igitdeck.services.trends import TrendService
 
 logger = logging.getLogger(__name__)
 
-TREND_LIMIT = 60
 SYNC_HISTORY_LIMIT = 10
 
 
@@ -52,6 +54,7 @@ class CatalogService:
         readme: ReadmeService,
         paths: StoragePaths,
         metadata: MetadataClient,
+        trends: TrendService,
     ) -> None:
         self.repos = repos
         self.stats = stats
@@ -59,6 +62,7 @@ class CatalogService:
         self.readme = readme
         self.paths = paths
         self.metadata = metadata
+        self.trends = trends
 
     def add(
         self,
@@ -115,9 +119,20 @@ class CatalogService:
     def get_summary(self, repo_id: int) -> RepoSummary:
         return self._summary(self.get_record(repo_id))
 
+    def _current_stats(self, record: RepoRecord) -> RepoStats | None:
+        """Only show statistics captured for the mirrored commit."""
+        snapshot = self.stats.latest(record.id)
+        if (
+            snapshot is None
+            or record.commit_sha is None
+            or snapshot.commit_sha != record.commit_sha
+        ):
+            return None
+        return snapshot
+
     def detail(self, repo_id: int) -> RepoDetail:
         record = self.get_record(repo_id)
-        stats = self.stats.latest(record.id)
+        stats = self._current_stats(record)
         readme_view = None
         if record.readme_path:
             worktree = self.paths.worktree(record.platform, record.owner, record.name)
@@ -129,9 +144,36 @@ class CatalogService:
         return RepoDetail(
             repo=RepoSummary.from_record(record, stats=stats),
             readme=readme_view,
-            trend=self.stats.trend(record.id, TREND_LIMIT),
+            trend=self._trend(record, stats),
             sync_runs=self.runs.for_repo(record.id, SYNC_HISTORY_LIMIT),
         )
+
+    def _trend(self, record: RepoRecord, stats: RepoStats | None) -> list[TrendPoint]:
+        """Warm the trend cache on first read after an upgrade.
+
+        Runs in the request threadpool, so it never blocks the event loop and
+        only executes when the mirror exists and the stored trend is stale.
+        """
+        commit_sha = stats.commit_sha if stats else None
+        points = self.trends.points(record.id, commit_sha)
+        if (
+            points
+            or commit_sha is None
+            or record.default_branch is None
+            or self.trends.covered(record.id, commit_sha)
+        ):
+            return points
+
+        bare = self.paths.bare_repo(record.platform, record.owner, record.name)
+        if not bare.is_dir():
+            return []
+        self.trends.refresh(
+            record.id,
+            bare=bare,
+            branch=record.default_branch,
+            commit_sha=commit_sha,
+        )
+        return self.trends.points(record.id, commit_sha)
 
     def filters(self) -> FilterOptions:
         platform_counts = self.repos.counts_by(FacetField.PLATFORM)
@@ -174,7 +216,7 @@ class CatalogService:
         return self.repos.get_by_identity(identity.platform, identity.owner, identity.name)
 
     def _summary(self, record: RepoRecord) -> RepoSummary:
-        return RepoSummary.from_record(record, stats=self.stats.latest(record.id))
+        return RepoSummary.from_record(record, stats=self._current_stats(record))
 
     def _add_result(self, record: RepoRecord, *, created: bool) -> RepoAddResult:
         return RepoAddResult(repo=self._summary(record), created=created)

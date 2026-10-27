@@ -15,7 +15,9 @@ from igitdeck.models.repo import (
     RepoStatus,
     SortField,
     SortOrder,
+    TrendPoint,
 )
+from igitdeck.repositories.trends import TrendRepository
 from igitdeck.services.container import Container
 from igitdeck.services.files import FileService
 
@@ -95,6 +97,7 @@ def seeded(container: Container):
         click.repo.id,
         synced_at=NOW,
         default_branch="main",
+        commit_sha="a" * 40,
         last_commit_at=NOW - timedelta(days=1),
         readme_path="README.md",
         readme_text="unique-readme-token",
@@ -109,6 +112,7 @@ def seeded(container: Container):
         is_repo.repo.id,
         synced_at=NOW,
         default_branch="main",
+        commit_sha="b" * 40,
         last_commit_at=NOW - timedelta(days=2),
         readme_path=None,
         readme_text=None,
@@ -186,8 +190,16 @@ def test_detail_renders_readme_trend_and_stats(seeded, container: Container) -> 
     assert detail.readme.path == "README.md"
     assert 'href="/api/repos/' in detail.readme.html
     assert "docs/guide.md" in detail.readme.html
-    assert len(detail.trend) == 1
-    assert detail.trend[0].code_lines == 100
+    assert detail.trend == []
+
+    trend_repository = TrendRepository(container.db)
+    point = TrendPoint(committed_at=NOW, commit_sha="a" * 40, lines=123)
+    trend_repository.save(click.id, commit_sha="a" * 40, points=[point])
+    with_trend = catalog.detail(click.id)
+    assert with_trend.trend == [point]
+
+    trend_repository.save(click.id, commit_sha="c" * 40, points=[point])
+    assert catalog.detail(click.id).trend == []
 
     file_service = FileService(container.repos, container.paths)
     assert file_service.resolve(click.id, "README.md").is_file()

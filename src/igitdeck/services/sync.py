@@ -22,6 +22,7 @@ from igitdeck.repositories.sync_runs import SyncRunRepository
 from igitdeck.services.metadata import MetadataClient
 from igitdeck.services.readme import ReadmeService, ReadmeSource
 from igitdeck.services.stats_collector import StatsCollector, StatsSummary
+from igitdeck.services.trends import TrendService
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +65,7 @@ class SyncService:
         collector: StatsCollector,
         readme: ReadmeService,
         metadata: MetadataClient,
+        trends: TrendService,
     ) -> None:
         self.repos = repos
         self.stats = stats
@@ -73,6 +75,7 @@ class SyncService:
         self.collector = collector
         self.readme = readme
         self.metadata = metadata
+        self.trends = trends
 
     def sync(self, repo_id: int, trigger: SyncTrigger) -> None:
         repo = self.repos.get(repo_id)
@@ -93,6 +96,12 @@ class SyncService:
             capture = self._capture(repo, mirror)
 
             self._persist(repo_id, capture, synced_at=utcnow())
+            self.trends.refresh(
+                repo_id,
+                bare=mirror.bare,
+                branch=mirror.branch,
+                commit_sha=mirror.commit_sha,
+            )
             self.runs.finish(
                 run_id,
                 status=SyncRunStatus.SUCCESS,
@@ -176,6 +185,7 @@ class SyncService:
             repo_id,
             synced_at=synced_at,
             default_branch=capture.branch,
+            commit_sha=capture.commit_sha,
             last_commit_at=capture.last_commit_at,
             readme_path=capture.readme.path,
             readme_text=capture.readme.text,

@@ -18,4 +18,5 @@ LEFT JOIN repo_snapshots {snapshot_alias}
         FROM repo_snapshots newest
         WHERE newest.repo_id = {repo_alias}.id
     )
+    AND {snapshot_alias}.commit_sha = {repo_alias}.commit_sha
 """

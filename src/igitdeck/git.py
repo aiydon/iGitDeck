@@ -19,6 +19,14 @@ class GitResult(BaseModel):
     args: list[str]
 
 
+class CommitLineDelta(BaseModel):
+    """Net tracked-line change introduced by one non-merge commit."""
+
+    commit_sha: str
+    committed_at: int
+    net_lines: int
+
+
 class GitClient:
     def __init__(self, timeout_seconds: int) -> None:
         self.timeout_seconds = timeout_seconds
@@ -105,3 +113,48 @@ class GitClient:
     def commit_time(self, bare: Path, commit: str) -> int:
         output = self._run(["--git-dir", str(bare), "log", "-1", "--format=%ct", commit]).stdout
         return int(output)
+
+    def commit_count(self, bare: Path, branch: str) -> int:
+        output = self._run(
+            ["--git-dir", str(bare), "rev-list", "--count", f"refs/heads/{branch}"]
+        ).stdout
+        return int(output)
+
+    def line_history(self, bare: Path, branch: str) -> list[CommitLineDelta]:
+        """Per-commit line deltas on `branch`, newest first.
+
+        Merge commits are skipped: without `-m` git emits no numstat for them,
+        and their content already arrives through the merged commits.
+        """
+        result = self._run(
+            [
+                "--git-dir",
+                str(bare),
+                "log",
+                "--numstat",
+                "--no-merges",
+                "--format=@@%H %ct",
+                f"refs/heads/{branch}",
+            ]
+        )
+        shas: list[str] = []
+        timestamps: list[int] = []
+        nets: list[int] = []
+        for line in result.stdout.splitlines():
+            if line.startswith("@@"):
+                fields = line[2:].split()
+                if len(fields) != 2:
+                    continue
+                shas.append(fields[0])
+                timestamps.append(int(fields[1]))
+                nets.append(0)
+            elif nets:
+                fields = line.split("\t")
+                if len(fields) < 2 or not fields[0].isdigit() or not fields[1].isdigit():
+                    continue
+                nets[-1] += int(fields[0]) - int(fields[1])
+
+        return [
+            CommitLineDelta(commit_sha=sha, committed_at=timestamp, net_lines=net)
+            for sha, timestamp, net in zip(shas, timestamps, nets, strict=True)
+        ]

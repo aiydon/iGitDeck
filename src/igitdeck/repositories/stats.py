@@ -5,7 +5,7 @@ from __future__ import annotations
 from igitdeck.clock import from_epoch, to_epoch
 from igitdeck.db.database import Database
 from igitdeck.models.dashboard import LanguageTotal, Totals
-from igitdeck.models.repo import LanguageStat, RepoStats, SnapshotRecord, TrendPoint
+from igitdeck.models.repo import LanguageStat, RepoStats, SnapshotRecord
 from igitdeck.repositories.sql import LATEST_SNAPSHOT_IDS
 
 
@@ -29,9 +29,14 @@ class StatsRepository:
         self.db = db
 
     def add_snapshot(self, repo_id: int, stats: RepoStats) -> None:
+        """Store the current statistics, replacing any previous snapshot.
+
+        Snapshots describe the mirrored commit, not a time series; trends come
+        from git history, so keeping older rows would only be stale weight.
+        """
         languages = LanguageStat.encode_many(stats.languages)
         with self.db.transaction() as connection:
-            connection.execute(
+            cursor = connection.execute(
                 """
                 INSERT INTO repo_snapshots (
                     repo_id, captured_at, commit_sha,
@@ -51,6 +56,10 @@ class StatsRepository:
                     languages,
                 ),
             )
+            connection.execute(
+                "DELETE FROM repo_snapshots WHERE repo_id = ? AND id != ?",
+                (repo_id, cursor.lastrowid),
+            )
 
     def latest(self, repo_id: int) -> SnapshotRecord | None:
         with self.db.connection() as connection:
@@ -59,34 +68,6 @@ class StatsRepository:
                 (repo_id,),
             ).fetchone()
         return _snapshot_record(row) if row else None
-
-    def trend(self, repo_id: int, limit: int) -> list[TrendPoint]:
-        with self.db.connection() as connection:
-            rows = connection.execute(
-                """
-                SELECT captured_at, commit_sha, code_lines, comment_lines,
-                       blank_lines, file_count, disk_bytes
-                FROM repo_snapshots
-                WHERE repo_id = ?
-                ORDER BY id DESC
-                LIMIT ?
-                """,
-                (repo_id, limit),
-            ).fetchall()
-        points = [
-            TrendPoint(
-                captured_at=from_epoch(row["captured_at"]),
-                commit_sha=row["commit_sha"],
-                code_lines=row["code_lines"],
-                comment_lines=row["comment_lines"],
-                blank_lines=row["blank_lines"],
-                file_count=row["file_count"],
-                disk_bytes=row["disk_bytes"],
-            )
-            for row in rows
-        ]
-        points.reverse()
-        return points
 
     def totals(self) -> Totals:
         with self.db.connection() as connection:
@@ -97,6 +78,7 @@ class StatsRepository:
                     coalesce(sum(s.disk_bytes), 0) AS disk_bytes,
                     coalesce(sum(s.file_count), 0) AS file_count
                 FROM repo_snapshots s
+                JOIN repos r ON r.id = s.repo_id AND r.commit_sha = s.commit_sha
                 JOIN ({LATEST_SNAPSHOT_IDS}) latest ON latest.id = s.id
                 """
             ).fetchone()
@@ -115,6 +97,7 @@ class StatsRepository:
                     sum(json_extract(lang.value, '$.code')) AS code_lines,
                     count(DISTINCT s.repo_id) AS repos
                 FROM repo_snapshots s
+                JOIN repos r ON r.id = s.repo_id AND r.commit_sha = s.commit_sha
                 JOIN ({LATEST_SNAPSHOT_IDS}) latest ON latest.id = s.id,
                      json_each(s.languages) AS lang
                 GROUP BY name

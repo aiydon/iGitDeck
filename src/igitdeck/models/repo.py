@@ -130,6 +130,7 @@ class RepoRecord(RepoNaming):
     consecutive_failures: int
     error_message: str | None
     added_at: datetime
+    commit_sha: str | None = None
 
 
 class HighlightSpan(BaseModel):
@@ -200,13 +201,17 @@ class RepoWithStats(BaseModel):
 
 
 class TrendPoint(BaseModel):
-    captured_at: datetime
-    commit_sha: str | None
-    code_lines: int
-    comment_lines: int
-    blank_lines: int
-    file_count: int
-    disk_bytes: int
+    """Tracked text lines at one commit on the default branch."""
+
+    committed_at: datetime
+    commit_sha: str
+    lines: int = Field(ge=0)
+
+
+class RepoLineTrend(BaseModel):
+    commit_sha: str
+    generated_at: datetime
+    points: list[TrendPoint]
 
 
 class ReadmeView(BaseModel):

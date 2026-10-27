@@ -45,6 +45,7 @@ _REPO_COLUMNS = (
     "consecutive_failures",
     "error_message",
     "added_at",
+    "commit_sha",
 )
 
 _SNAPSHOT_COLUMNS = (
@@ -108,6 +109,7 @@ def _repo_record(row: sqlite3.Row) -> RepoRecord:
         consecutive_failures=row["consecutive_failures"],
         error_message=row["error_message"],
         added_at=from_epoch(row["added_at"]),
+        commit_sha=row["commit_sha"],
     )
 
 
@@ -261,6 +263,7 @@ class RepoRepository:
         *,
         synced_at: datetime,
         default_branch: str,
+        commit_sha: str,
         last_commit_at: datetime,
         readme_path: str | None,
         readme_text: str | None,
@@ -272,6 +275,7 @@ class RepoRepository:
                 UPDATE repos
                 SET status = ?,
                     default_branch = ?,
+                    commit_sha = ?,
                     last_synced_at = ?,
                     last_commit_at = ?,
                     readme_path = ?,
@@ -284,6 +288,7 @@ class RepoRepository:
                 (
                     RepoStatus.READY.value,
                     default_branch,
+                    commit_sha,
                     to_epoch(synced_at),
                     to_epoch(last_commit_at),
                     readme_path,

@@ -9,6 +9,7 @@ from igitdeck.paths import StoragePaths
 from igitdeck.repositories.repos import RepoRepository
 from igitdeck.repositories.stats import StatsRepository
 from igitdeck.repositories.sync_runs import SyncRunRepository
+from igitdeck.repositories.trends import TrendRepository
 from igitdeck.services.catalog import CatalogService
 from igitdeck.services.coordinator import SyncCoordinator
 from igitdeck.services.dashboard import DashboardService
@@ -20,6 +21,7 @@ from igitdeck.services.readme import ReadmeService
 from igitdeck.services.scheduler import SyncScheduler
 from igitdeck.services.stats_collector import SccStatsCollector
 from igitdeck.services.sync import SyncService
+from igitdeck.services.trends import TrendService
 
 
 class Container:
@@ -32,6 +34,7 @@ class Container:
         repos: RepoRepository,
         stats: StatsRepository,
         sync_runs: SyncRunRepository,
+        trends: TrendService,
         readme: ReadmeService,
         files: FileService,
         metadata: MetadataClient,
@@ -48,6 +51,7 @@ class Container:
         self.repos = repos
         self.stats = stats
         self.sync_runs = sync_runs
+        self.trends = trends
         self.readme = readme
         self.files = files
         self.metadata = metadata
@@ -65,6 +69,7 @@ def build_container(settings: Settings) -> Container:
     repos = RepoRepository(db)
     stats = StatsRepository(db)
     sync_runs = SyncRunRepository(db)
+    trend_repository = TrendRepository(db)
     readme = ReadmeService(
         max_bytes=settings.readme_max_bytes,
         index_max_chars=settings.readme_index_max_chars,
@@ -75,6 +80,7 @@ def build_container(settings: Settings) -> Container:
         timeout_seconds=settings.metadata_timeout_seconds,
     )
     git = GitClient(settings.git_timeout_seconds)
+    trends = TrendService(git, trend_repository)
     collector = SccStatsCollector(settings.scc_binary, settings.scc_timeout_seconds)
     sync = SyncService(
         repos=repos,
@@ -85,6 +91,7 @@ def build_container(settings: Settings) -> Container:
         collector=collector,
         readme=readme,
         metadata=metadata,
+        trends=trends,
     )
     coordinator = SyncCoordinator(sync, settings.sync_concurrency)
     policy = SyncPolicy(
@@ -108,6 +115,7 @@ def build_container(settings: Settings) -> Container:
         readme=readme,
         paths=paths,
         metadata=metadata,
+        trends=trends,
     )
     dashboard = DashboardService(
         repos=repos,
@@ -129,6 +137,7 @@ def build_container(settings: Settings) -> Container:
         repos=repos,
         stats=stats,
         sync_runs=sync_runs,
+        trends=trends,
         readme=readme,
         files=files,
         metadata=metadata,

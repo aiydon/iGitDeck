@@ -65,6 +65,7 @@ def mark_ready(container: Container, repo_id: int, attempted_at: datetime) -> No
         repo_id,
         synced_at=attempted_at,
         default_branch="main",
+        commit_sha="a" * 40,
         last_commit_at=attempted_at,
         readme_path=None,
         readme_text=None,

@@ -8,6 +8,8 @@ from igitdeck.clock import from_epoch, to_epoch
 from igitdeck.db.database import Database
 from igitdeck.models.sync import SyncRunStatus, SyncRunView, SyncTrigger
 
+MAX_RUNS_PER_REPO = 50
+
 
 def _view(row) -> SyncRunView:
     return SyncRunView(
@@ -61,6 +63,9 @@ class SyncRunRepository:
         commit_sha: str | None,
     ) -> None:
         with self.db.transaction() as connection:
+            row = connection.execute(
+                "SELECT repo_id FROM sync_runs WHERE id = ?", (run_id,)
+            ).fetchone()
             connection.execute(
                 """
                 UPDATE sync_runs
@@ -69,6 +74,20 @@ class SyncRunRepository:
                 """,
                 (status.value, to_epoch(finished_at), message, commit_sha, run_id),
             )
+            if row is not None:
+                connection.execute(
+                    """
+                    DELETE FROM sync_runs
+                    WHERE repo_id = ?
+                      AND id NOT IN (
+                          SELECT id FROM sync_runs
+                          WHERE repo_id = ?
+                          ORDER BY id DESC
+                          LIMIT ?
+                      )
+                    """,
+                    (row["repo_id"], row["repo_id"], MAX_RUNS_PER_REPO),
+                )
 
     def for_repo(self, repo_id: int, limit: int) -> list[SyncRunView]:
         with self.db.connection() as connection:

@@ -7,7 +7,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
-from igitdeck.db.schema import SCHEMA_STATEMENTS, SCHEMA_VERSION
+from igitdeck.db.schema import MIGRATIONS, SCHEMA_VERSION
 
 
 class Database:
@@ -44,28 +44,30 @@ class Database:
             connection.close()
 
     def migrate(self) -> None:
-        """Apply the schema exactly once, atomically, and refuse unknown versions.
+        """Apply pending migrations atomically and refuse unknown versions.
 
         WAL is a database-level pragma and must run outside a transaction;
-        DDL and the version bump then commit together so a crash cannot leave a
-        half-migrated database.
+        each migration's DDL/data changes and its version bump then commit
+        together so a crash cannot leave a half-migrated database.
         """
         with self.connection() as connection:
             connection.execute("PRAGMA journal_mode = WAL")
-            version = self._version(connection)
-            if version == SCHEMA_VERSION:
+            current = self._version(connection)
+            if current == SCHEMA_VERSION:
                 return
-            if version != 0:
-                relation = "newer than" if version > SCHEMA_VERSION else "older than"
+            if current > SCHEMA_VERSION:
                 raise RuntimeError(
-                    f"database schema v{version} is {relation} this build's v{SCHEMA_VERSION}; "
-                    "restore a matching backup or migrate it explicitly"
+                    f"database schema v{current} is newer than this build's "
+                    f"v{SCHEMA_VERSION}; restore a matching backup"
                 )
+            if current not in {0, *MIGRATIONS}:
+                raise RuntimeError(f"database schema v{current} has no migration path")
 
         with self.transaction() as connection:
-            for statement in SCHEMA_STATEMENTS:
-                connection.execute(statement)
-            connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+            for target in sorted(v for v in MIGRATIONS if v > current):
+                for statement in MIGRATIONS[target]:
+                    connection.execute(statement)
+                connection.execute(f"PRAGMA user_version = {target}")
 
     @staticmethod
     def _version(connection: sqlite3.Connection) -> int:
