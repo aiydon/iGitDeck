@@ -25,7 +25,7 @@ from igitdeck.repositories.trends import TrendRepository
 logger = logging.getLogger(__name__)
 
 MAX_TREND_POINTS = 120
-MAX_HISTORY_COMMITS = 20_000
+DEFAULT_MAX_COMMITS = 100_000
 ACTIVITY_WEEKS = 52
 CHURN_MONTHS = 12
 TOP_CONTRIBUTORS = 5
@@ -118,27 +118,47 @@ def _day(timestamp: int) -> date:
 
 
 class TrendService:
-    def __init__(self, git: GitClient, trends: TrendRepository) -> None:
+    def __init__(
+        self,
+        git: GitClient,
+        trends: TrendRepository,
+        *,
+        max_commits: int = DEFAULT_MAX_COMMITS,
+    ) -> None:
         self.git = git
         self.trends = trends
+        self.max_commits = max_commits
 
     def refresh(self, repo_id: int, *, bare: Path, branch: str, commit_sha: str) -> None:
         """Best effort: a trend failure must never fail a sync."""
         try:
-            if self.git.commit_count(bare, branch) > MAX_HISTORY_COMMITS:
+            if self.git.commit_count(bare, branch) > self.max_commits:
                 logger.info(
                     "git insights skipped for repo %s: history exceeds %s commits",
                     repo_id,
-                    MAX_HISTORY_COMMITS,
+                    self.max_commits,
                 )
                 # Mark the commit as attempted so reads do not retry the count.
-                self.trends.save(repo_id, commit_sha=commit_sha, points=[])
+                self.trends.save(
+                    repo_id,
+                    commit_sha=commit_sha,
+                    points=[],
+                    note=f"提交数超过 {self.max_commits:,}，已跳过趋势生成",
+                )
                 return
 
             deltas = self.git.line_history(bare, branch)
             commits = self.git.commit_authors(bare, branch)
             tip_epoch = self.git.commit_time(bare, commit_sha)
             points = build_line_trend(deltas)
+            if not points:
+                self.trends.save(
+                    repo_id,
+                    commit_sha=commit_sha,
+                    points=[],
+                    note="默认分支没有可分析的提交",
+                )
+                return
             tip_time = from_epoch(tip_epoch)
             if points and points[-1].commit_sha != commit_sha and tip_time is not None:
                 # The tip is usually a merge commit, which has no numstat diff.

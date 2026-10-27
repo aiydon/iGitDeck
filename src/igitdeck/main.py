@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
+import functools
 import logging
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import uvicorn
 from fastapi import FastAPI, HTTPException
@@ -20,7 +21,13 @@ from igitdeck.clock import utcnow
 from igitdeck.config import Settings, load_settings
 from igitdeck.services.container import build_container
 
+if TYPE_CHECKING:
+    from igitdeck.services.container import Container
+
 logger = logging.getLogger(__name__)
+
+# Heavy repositories can take minutes; a small pool keeps the rest moving.
+INSIGHTS_WARMUP_CONCURRENCY = 3
 
 
 def configure_logging(level: str) -> None:
@@ -53,6 +60,7 @@ def create_app(settings: Settings | None = None, *, with_logging: bool = True) -
         scheduler_task: asyncio.Task[None] | None = None
         if resolved_settings.auto_sync:
             scheduler_task = asyncio.create_task(container.scheduler.run(), name="sync-scheduler")
+        warmup_task = asyncio.create_task(_warm_insights(container), name="insights-warmup")
         logger.info(
             "iGitDeck ready: data=%s auto_sync=%s",
             container.paths.root,
@@ -63,8 +71,11 @@ def create_app(settings: Settings | None = None, *, with_logging: bool = True) -
         finally:
             if scheduler_task is not None:
                 scheduler_task.cancel()
-                with contextlib.suppress(asyncio.CancelledError):
+                with suppress(asyncio.CancelledError):
                     await scheduler_task
+            warmup_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await warmup_task
             await container.coordinator.shutdown()
 
     app = FastAPI(
@@ -81,6 +92,49 @@ def create_app(settings: Settings | None = None, *, with_logging: bool = True) -
     app.include_router(git.router)
     _mount_frontend(app, resolved_settings.frontend_dist)
     return app
+
+
+async def _warm_insights(container: Container) -> None:
+    """Rebuild git insights missing after an upgrade or a changed cap.
+
+    Runs off the request path so the first detail view does not wait for a
+    multi-second git log on repositories with long histories.
+    """
+    try:
+        records = await asyncio.to_thread(container.repos.ready_without_insights)
+    except Exception:
+        logger.exception("insights warmup query failed")
+        return
+
+    gate = asyncio.Semaphore(INSIGHTS_WARMUP_CONCURRENCY)
+
+    async def warm(record) -> None:
+        if record.commit_sha is None or record.default_branch is None:
+            return
+        if container.coordinator.is_running(record.id):
+            return
+        bare = container.paths.bare_repo(record.platform, record.owner, record.name)
+        if not bare.is_dir():
+            return
+
+        async with gate:
+            logger.info("warming git insights for %s/%s", record.owner, record.name)
+            try:
+                await asyncio.to_thread(
+                    functools.partial(
+                        container.trends.refresh,
+                        record.id,
+                        bare=bare,
+                        branch=record.default_branch,
+                        commit_sha=record.commit_sha,
+                    )
+                )
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("insights warmup failed for repo %s", record.id)
+
+    await asyncio.gather(*(warm(record) for record in records))
 
 
 def _mount_frontend(app: FastAPI, dist: Path) -> None:

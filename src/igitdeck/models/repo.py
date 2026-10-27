@@ -235,6 +235,7 @@ class RepoLineTrend(BaseModel):
     activity: list[DayActivity] = Field(default_factory=list)
     churn: list[MonthChurn] = Field(default_factory=list)
     contributors: list[Contributor] = Field(default_factory=list)
+    note: str | None = None
 
 
 class ReadmeView(BaseModel):
@@ -293,6 +294,7 @@ class RepoDetail(BaseModel):
     activity: list[DayActivity] = Field(default_factory=list)
     churn: list[MonthChurn] = Field(default_factory=list)
     contributors: list[Contributor] = Field(default_factory=list)
+    insights_note: str | None = None
     sync_runs: list[SyncRunView]
 
 

@@ -236,6 +236,25 @@ class RepoRepository:
             connection.execute("DELETE FROM repos WHERE id = ?", (repo_id,))
         return _repo_record(row)
 
+    def ready_without_insights(self) -> list[RepoRecord]:
+        """Ready repositories whose stored git insights do not match HEAD."""
+        with self.db.connection() as connection:
+            rows = connection.execute(
+                f"""
+                SELECT {_repo_select()}
+                FROM repos r
+                LEFT JOIN repo_trends t
+                    ON t.repo_id = r.id AND t.commit_sha = r.commit_sha
+                WHERE r.status = ?
+                  AND r.commit_sha IS NOT NULL
+                  AND r.default_branch IS NOT NULL
+                  AND t.repo_id IS NULL
+                ORDER BY r.id
+                """,
+                (RepoStatus.READY.value,),
+            ).fetchall()
+        return [_repo_record(row) for row in rows]
+
     def sync_candidates(self) -> list[RepoRecord]:
         with self.db.connection() as connection:
             rows = connection.execute(

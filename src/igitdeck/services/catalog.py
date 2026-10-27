@@ -159,6 +159,7 @@ class CatalogService:
             activity=insights.activity if insights else [],
             churn=insights.churn if insights else [],
             contributors=insights.contributors if insights else [],
+            insights_note=insights.note if insights else None,
             sync_runs=self.runs.for_repo(record.id, SYNC_HISTORY_LIMIT),
         )
 

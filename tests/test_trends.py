@@ -176,7 +176,7 @@ def test_trend_service_marks_oversized_history_as_covered(
         description=None,
         added_at=datetime.now(UTC),
     )
-    service = TrendService(container.sync.git, repository)
+    service = TrendService(container.sync.git, repository, max_commits=20_000)
     monkeypatch.setattr(container.sync.git, "commit_count", lambda *args: 20_001)
     monkeypatch.setattr(
         container.sync.git,
@@ -188,7 +188,10 @@ def test_trend_service_marks_oversized_history_as_covered(
 
     assert service.covered(record.id, "a" * 40)
     stored = service.record(record.id, "a" * 40)
-    assert stored is not None and stored.points == []
+    assert stored is not None
+    assert stored.points == []
+    assert stored.note is not None
+    assert "20,000" in stored.note
     assert not service.covered(record.id, "b" * 40)
 
 
@@ -287,3 +290,47 @@ def test_dashboard_aggregates_weekly_activity(container: Container) -> None:
     overview = container.dashboard.overview()
     assert sum(entry.commits for entry in overview.activity) == 4
     assert overview.activity[-1].day.weekday() == 6
+
+
+def test_startup_warmup_rebuilds_missing_insights(container: Container, make_git_repo, git) -> None:
+    import asyncio
+
+    from igitdeck.main import _warm_insights
+
+    source = make_git_repo({"a.txt": "one\ntwo\n"})
+    commit = git(source, "rev-parse", "HEAD").strip()
+    mirror = container.paths.bare_repo(Platform.GITHUB, "local", "warmup")
+    mirror.parent.mkdir(parents=True, exist_ok=True)
+    container.sync.git.clone_mirror(source.as_uri(), mirror)
+
+    record = container.repos.add(
+        RepoIdentity(
+            platform=Platform.GITHUB,
+            owner="local",
+            name="warmup",
+            url=source.as_uri(),
+        ),
+        source=RepoSource.MANUAL,
+        description=None,
+        added_at=datetime.now(UTC),
+    )
+    container.repos.mark_success(
+        record.id,
+        synced_at=datetime.now(UTC),
+        default_branch="main",
+        commit_sha=commit,
+        last_commit_at=datetime.now(UTC),
+        readme_path=None,
+        readme_text=None,
+        description=None,
+    )
+
+    assert [repo.id for repo in container.repos.ready_without_insights()] == [record.id]
+
+    asyncio.run(_warm_insights(container))
+
+    stored = container.trends.record(record.id, commit)
+    assert stored is not None
+    assert stored.points
+    assert stored.note is None
+    assert container.repos.ready_without_insights() == []

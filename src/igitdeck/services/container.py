@@ -83,7 +83,7 @@ def build_container(settings: Settings) -> Container:
         timeout_seconds=settings.metadata_timeout_seconds,
     )
     git = GitClient(settings.git_timeout_seconds)
-    trends = TrendService(git, trend_repository)
+    trends = TrendService(git, trend_repository, max_commits=settings.git_insights_max_commits)
     progress = ProgressTracker()
     collector = SccStatsCollector(settings.scc_binary, settings.scc_timeout_seconds)
     sync = SyncService(

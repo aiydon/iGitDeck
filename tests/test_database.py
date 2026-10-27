@@ -28,7 +28,7 @@ def test_migrate_is_idempotent_and_records_version(tmp_path: Path) -> None:
         assert {"repos", "repo_snapshots", "sync_runs", "repo_trends", "repos_fts"} <= tables
         assert connection.execute("PRAGMA journal_mode").fetchone()[0].lower() == "wal"
         trend_columns = {row[1] for row in connection.execute("PRAGMA table_info(repo_trends)")}
-        assert {"activity", "churn", "contributors"} <= trend_columns
+        assert {"activity", "churn", "contributors", "note"} <= trend_columns
     finally:
         connection.close()
 
@@ -83,5 +83,34 @@ def test_migrate_upgrades_v1_and_prunes_duplicate_snapshots(tmp_path: Path) -> N
         assert connection.execute("SELECT count(*) FROM repo_snapshots").fetchone()[0] == 1
         assert connection.execute("SELECT captured_at FROM repo_snapshots").fetchone()[0] == 2
         assert connection.execute("SELECT commit_sha FROM repos").fetchone()[0] == "sha"
+    finally:
+        connection.close()
+
+
+def test_migrate_v3_drops_skipped_trends_and_adds_note(tmp_path: Path) -> None:
+    path = tmp_path / "v3.db"
+    connection = sqlite3.connect(path)
+    for target in (1, 2, 3):
+        for statement in MIGRATIONS[target]:
+            connection.execute(statement)
+    for repo_id, points in ((1, "[]"), (2, '[{"lines": 1}]')):
+        connection.execute(
+            """
+            INSERT INTO repo_trends (repo_id, commit_sha, generated_at, points, activity)
+            VALUES (?, 'sha', 1, ?, '[]')
+            """,
+            (repo_id, points),
+        )
+    connection.execute("PRAGMA user_version = 3")
+    connection.commit()
+    connection.close()
+
+    Database(path).migrate()
+
+    connection = sqlite3.connect(path)
+    try:
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
+        assert [row[0] for row in connection.execute("SELECT repo_id FROM repo_trends")] == [2]
+        assert {row[1] for row in connection.execute("PRAGMA table_info(repo_trends)")} >= {"note"}
     finally:
         connection.close()

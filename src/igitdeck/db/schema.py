@@ -5,7 +5,7 @@ Bump SCHEMA_VERSION and append the migration statements when the schema changes.
 
 from __future__ import annotations
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 # Each entry upgrades the database from the previous version to its key.
 MIGRATIONS: dict[int, tuple[str, ...]] = {
@@ -168,5 +168,14 @@ MIGRATIONS: dict[int, tuple[str, ...]] = {
         "ALTER TABLE repo_trends ADD COLUMN activity TEXT",
         "ALTER TABLE repo_trends ADD COLUMN churn TEXT",
         "ALTER TABLE repo_trends ADD COLUMN contributors TEXT",
+    ),
+    4: (
+        "ALTER TABLE repo_trends ADD COLUMN note TEXT",
+        # Rows skipped under the old 20k commit cap stored empty series; drop
+        # them so the background warmup (or the next detail view) rebuilds.
+        """
+        DELETE FROM repo_trends
+        WHERE points = '[]' AND coalesce(activity, '[]') = '[]'
+        """,
     ),
 }

@@ -53,6 +53,8 @@ class Settings(BaseModel):
     metadata_timeout_seconds: int = Field(10, ge=1)
     readme_max_bytes: int = Field(1_000_000, ge=1024)
     readme_index_max_chars: int = Field(200_000, ge=1000)
+    # Above this many commits the git log scan is skipped and the UI says why.
+    git_insights_max_commits: int = Field(100_000, ge=1)
 
     # Trending crawler process
     crawler_api_base_url: str = "http://127.0.0.1:8000"
