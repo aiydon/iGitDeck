@@ -1,8 +1,11 @@
 import { Link } from "react-router-dom";
 
 import { RepoIcon } from "../components/icons";
+import { useDocumentTitle } from "../lib/useDocumentTitle";
 
 export function NotFoundPage() {
+  useDocumentTitle("页面不存在 · iGitDeck");
+
   return (
     <div className="empty-state not-found">
       <div className="empty-icon">

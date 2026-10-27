@@ -1,15 +1,13 @@
-import type { EChartsOption } from "echarts";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { api } from "../api/client";
-import type { SyncRunView, TrendPoint } from "../api/client";
+import { PlatformBadge, SourceBadge, StatusBadge } from "../components/Badges";
 import { ConfirmDialog } from "../components/ConfirmDialog";
-import { EmptyState } from "../components/EmptyState";
 import { EChart } from "../components/EChart";
+import { EmptyState } from "../components/EmptyState";
 import {
   AlertIcon,
-  BranchIcon,
   CheckIcon,
   ChevronLeftIcon,
   ClockIcon,
@@ -23,131 +21,29 @@ import {
   TerminalIcon,
   TrashIcon,
 } from "../components/icons";
-import { LanguageBar } from "../components/LanguageBar";
-import {
-  PlatformBadge,
-  SourceBadge,
-  StatusBadge,
-  SyncStatusBadge,
-} from "../components/Badges";
 import { Notice } from "../components/Notice";
 import type { NoticeTone } from "../components/Notice";
+import { LanguagePanel } from "../components/repo/LanguagePanel";
+import { MetaPanel } from "../components/repo/MetaPanel";
+import { SyncHistoryPanel } from "../components/repo/SyncHistoryPanel";
 import { Spinner } from "../components/Spinner";
 import { StatCard } from "../components/StatCard";
+import { trendChartOption } from "../lib/charts";
 import { copyText } from "../lib/clipboard";
 import {
   compactNumber,
   errorMessage,
   formatBytes,
-  formatChartDate,
-  formatDateTime,
-  formatDuration,
   formatNumber,
-  formatPercent,
   rawFileHref,
   relativeTime,
-  shortSha,
 } from "../lib/format";
 import { useLiveRefresh, useRequest } from "../lib/hooks";
-import { languageColor } from "../lib/languageColor";
-import { platformLabel, sourceLabel, syncTriggerLabel } from "../lib/options";
+import { useDocumentTitle } from "../lib/useDocumentTitle";
 
 interface NoticeState {
   tone: NoticeTone;
   message: string;
-}
-
-function buildTrendOption(points: TrendPoint[]): EChartsOption {
-  return {
-    backgroundColor: "transparent",
-    grid: { left: 52, right: 24, top: 24, bottom: 42 },
-    tooltip: {
-      trigger: "axis",
-      backgroundColor: "#18201a",
-      borderColor: "rgba(255,255,255,0.14)",
-      borderWidth: 1,
-      textStyle: { color: "#eef2e9", fontSize: 12 },
-    },
-    xAxis: {
-      type: "category",
-      boundaryGap: false,
-      data: points.map((point) => formatChartDate(point.captured_at)),
-      axisLine: { lineStyle: { color: "rgba(128,136,124,0.24)" } },
-      axisTick: { show: false },
-      axisLabel: { color: "#8b9288", fontSize: 11, hideOverlap: true },
-    },
-    yAxis: {
-      type: "value",
-      minInterval: 1,
-      axisLine: { show: false },
-      axisTick: { show: false },
-      axisLabel: {
-        color: "#8b9288",
-        fontSize: 11,
-        formatter: (value: number | string) => compactNumber(Number(value)),
-      },
-      splitLine: { lineStyle: { color: "rgba(128,136,124,0.16)" } },
-    },
-    series: [
-      {
-        name: "代码行",
-        type: "line",
-        data: points.map((point) => point.code_lines),
-        smooth: false,
-        symbol: "circle",
-        symbolSize: 5,
-        lineStyle: { color: "#4f9a6f", width: 2 },
-        itemStyle: { color: "#4f9a6f" },
-        areaStyle: { color: "rgba(79,154,111,0.12)" },
-      },
-    ],
-  };
-}
-
-function HistoryTable({ runs }: { runs: SyncRunView[] }) {
-  if (runs.length === 0) {
-    return (
-      <EmptyState
-        title="还没有同步记录"
-        description="点击“立即同步”开始第一次镜像。"
-        icon={<RefreshIcon size={28} />}
-      />
-    );
-  }
-  return (
-    <div className="table-scroll">
-      <table className="history-table">
-        <thead>
-          <tr>
-            <th>状态</th>
-            <th>触发</th>
-            <th>开始时间</th>
-            <th className="numeric">耗时</th>
-            <th>提交</th>
-            <th>信息</th>
-          </tr>
-        </thead>
-        <tbody>
-          {runs.map((run) => (
-            <tr key={run.id}>
-              <td>
-                <SyncStatusBadge status={run.status} />
-              </td>
-              <td>{syncTriggerLabel(run.trigger)}</td>
-              <td title={formatDateTime(run.started_at)}>
-                {relativeTime(run.started_at)}
-              </td>
-              <td className="numeric mono">{formatDuration(run.duration_seconds)}</td>
-              <td className="mono">{shortSha(run.commit_sha)}</td>
-              <td className="history-message" title={run.message ?? undefined}>
-                {run.message ?? "—"}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
 }
 
 export function RepoDetailPage() {
@@ -167,17 +63,13 @@ export function RepoDetailPage() {
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  const syncing = data?.repo.status === "syncing";
-  useLiveRefresh(syncing, refresh, { fastIntervalMs: 3000 });
+  useDocumentTitle(data ? `${data.repo.full_name} · iGitDeck` : null);
+  useLiveRefresh(data?.repo.status === "syncing", refresh, { fastIntervalMs: 3000 });
 
   const trendOption = useMemo(
-    () => buildTrendOption(data?.trend ?? []),
+    () => trendChartOption(data?.trend ?? []),
     [data?.trend],
   );
-
-  useEffect(() => {
-    if (data) document.title = `${data.repo.full_name} · iGitDeck`;
-  }, [data]);
 
   const cloneCommand =
     data && typeof window !== "undefined"
@@ -256,7 +148,9 @@ export function RepoDetailPage() {
       const result = await api.syncRepo(repo.id);
       setNotice({
         tone: result.queued ? "success" : "info",
-        message: result.queued ? "已提交同步任务，正在刷新状态" : result.message ?? "该仓库正在同步",
+        message: result.queued
+          ? "已提交同步任务，正在刷新状态"
+          : result.message ?? "该仓库正在同步",
       });
       refresh();
       window.setTimeout(refresh, 1400);
@@ -313,10 +207,14 @@ export function RepoDetailPage() {
             type="button"
             className="button secondary"
             onClick={handleSync}
-            disabled={syncBusy || syncing}
+            disabled={syncBusy || repo.status === "syncing"}
           >
-            {syncBusy || syncing ? <Spinner label="同步中" /> : <RefreshIcon size={16} />}
-            {syncing ? "同步中" : "立即同步"}
+            {syncBusy || repo.status === "syncing" ? (
+              <Spinner label="同步中" />
+            ) : (
+              <RefreshIcon size={16} />
+            )}
+            {repo.status === "syncing" ? "同步中" : "立即同步"}
           </button>
           <button
             type="button"
@@ -356,11 +254,7 @@ export function RepoDetailPage() {
         <StatCard
           label="代码行"
           value={stats ? compactNumber(stats.code_lines) : "—"}
-          detail={
-            stats
-              ? `${formatNumber(stats.code_lines)} 行代码`
-              : "等待首次同步"
-          }
+          detail={stats ? `${formatNumber(stats.code_lines)} 行代码` : "等待首次同步"}
           icon={<CodeIcon size={19} />}
           tone="accent"
         />
@@ -423,79 +317,8 @@ export function RepoDetailPage() {
         </section>
 
         <aside className="detail-aside">
-          <section className="panel language-panel">
-            <div className="panel-head">
-              <div>
-                <h2>语言构成</h2>
-                <p>{stats ? `${formatNumber(stats.code_lines)} 行代码` : "尚未统计"}</p>
-              </div>
-            </div>
-            {languages.length === 0 ? (
-              <EmptyState title="暂无语言数据" icon={<CodeIcon size={26} />} />
-            ) : (
-              <>
-                <LanguageBar languages={languages} maxSegments={10} />
-                <ul className="detail-lang-list">
-                  {languages.map((language) => (
-                    <li key={language.name}>
-                      <span
-                        className="lang-dot"
-                        style={{ background: languageColor(language.name) }}
-                      />
-                      <span className="detail-lang-name">{language.name}</span>
-                      <span className="detail-lang-code mono">
-                        {compactNumber(language.code)}
-                      </span>
-                      <strong>{formatPercent(language.percent)}</strong>
-                    </li>
-                  ))}
-                </ul>
-              </>
-            )}
-          </section>
-
-          <section className="panel meta-panel">
-            <div className="panel-head">
-              <div>
-                <h2>仓库信息</h2>
-              </div>
-            </div>
-            <dl className="meta-list">
-              <div>
-                <dt>平台</dt>
-                <dd>{platformLabel(repo.platform)}</dd>
-              </div>
-              <div>
-                <dt>默认分支</dt>
-                <dd className="mono">
-                  <BranchIcon size={14} />
-                  {repo.default_branch ?? "—"}
-                </dd>
-              </div>
-              <div>
-                <dt>来源</dt>
-                <dd>{sourceLabel(repo.source)}</dd>
-              </div>
-              <div>
-                <dt>添加时间</dt>
-                <dd>{formatDateTime(repo.added_at)}</dd>
-              </div>
-              <div>
-                <dt>最后同步</dt>
-                <dd>{formatDateTime(repo.last_synced_at)}</dd>
-              </div>
-              <div>
-                <dt>最后提交</dt>
-                <dd>{formatDateTime(repo.last_commit_at)}</dd>
-              </div>
-              {repo.consecutive_failures > 0 && (
-                <div>
-                  <dt>连续失败</dt>
-                  <dd className="danger-text">{repo.consecutive_failures} 次</dd>
-                </div>
-              )}
-            </dl>
-          </section>
+          <LanguagePanel stats={stats} />
+          <MetaPanel repo={repo} />
         </aside>
       </div>
 
@@ -505,7 +328,9 @@ export function RepoDetailPage() {
             <h2>代码量趋势</h2>
             <p>
               {trend.length > 0
-                ? `最近 ${trend.length} 次同步快照，最新 ${formatNumber(trend[trend.length - 1]?.code_lines ?? 0)} 行`
+                ? `最近 ${trend.length} 次同步快照，最新 ${formatNumber(
+                    trend[trend.length - 1]?.code_lines ?? 0,
+                  )} 行`
                 : "同步完成后按提交生成代码量快照。"}
             </p>
           </div>
@@ -525,14 +350,7 @@ export function RepoDetailPage() {
         )}
       </section>
 
-      <section className="panel history-panel">
-        <div className="panel-head">
-          <div>
-            <h2>同步历史</h2>
-          </div>
-        </div>
-        <HistoryTable runs={sync_runs} />
-      </section>
+      <SyncHistoryPanel runs={sync_runs} />
 
       {deleteOpen && (
         <ConfirmDialog

@@ -12,12 +12,6 @@ export function Layout() {
 
   useEffect(() => {
     window.scrollTo({ top: 0 });
-    document.title =
-      location.pathname === "/"
-        ? "iGitDeck · 镜像看板"
-        : location.pathname.startsWith("/repos")
-          ? "仓库 · iGitDeck"
-          : "iGitDeck";
   }, [location.pathname]);
 
   return (

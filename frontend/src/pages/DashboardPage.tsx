@@ -1,16 +1,22 @@
-import type { EChartsOption } from "echarts";
 import { useMemo } from "react";
 import { Link } from "react-router-dom";
 
 import { api } from "../api/client";
-import type { LanguageSlice } from "../api/client";
-import { LanguageBar } from "../components/LanguageBar";
 import { PlatformBadge, StatusBadge, SyncStatusBadge } from "../components/Badges";
 import { EmptyState } from "../components/EmptyState";
 import { EChart } from "../components/EChart";
-import { AlertIcon, CodeIcon, DiskIcon, FileIcon, RefreshIcon, RepoIcon } from "../components/icons";
-import { StatCard } from "../components/StatCard";
+import {
+  AlertIcon,
+  CodeIcon,
+  DiskIcon,
+  FileIcon,
+  RefreshIcon,
+  RepoIcon,
+} from "../components/icons";
+import { LanguageBar } from "../components/LanguageBar";
 import { Spinner } from "../components/Spinner";
+import { StatCard } from "../components/StatCard";
+import { languageDonutOption, toLanguageData } from "../lib/charts";
 import {
   compactNumber,
   formatBytes,
@@ -19,43 +25,13 @@ import {
   relativeTime,
 } from "../lib/format";
 import { useLiveRefresh, useRequest } from "../lib/hooks";
-import { languageColor } from "../lib/languageColor";
 import { repoStatusLabel, syncTriggerLabel } from "../lib/options";
-
-interface LanguageDatum {
-  name: string;
-  value: number;
-  percent: number;
-  repos: number;
-  color: string;
-  other: boolean;
-}
-
-function buildDonutData(languages: LanguageSlice[]): LanguageDatum[] {
-  const top = languages.slice(0, 7).map((language) => ({
-    name: language.name,
-    value: language.code_lines,
-    percent: language.percent,
-    repos: language.repos,
-    color: languageColor(language.name),
-    other: false,
-  }));
-  const rest = languages.slice(7);
-  if (rest.length > 0) {
-    top.push({
-      name: "其他",
-      value: rest.reduce((sum, language) => sum + language.code_lines, 0),
-      percent: rest.reduce((sum, language) => sum + language.percent, 0),
-      repos: 0,
-      color: "#98a096",
-      other: true,
-    });
-  }
-  return top;
-}
+import { useDocumentTitle } from "../lib/useDocumentTitle";
 
 export function DashboardPage() {
   const { data, loading, error, refresh } = useRequest(() => api.overview(), []);
+
+  useDocumentTitle("镜像全景 · iGitDeck");
 
   const active = Boolean(
     data?.statuses.some(
@@ -65,39 +41,11 @@ export function DashboardPage() {
 
   useLiveRefresh(active, refresh);
 
-  const donutData = useMemo(() => buildDonutData(data?.languages ?? []), [data?.languages]);
-
-  const donutOption = useMemo<EChartsOption>(
-    () => ({
-      backgroundColor: "transparent",
-      tooltip: {
-        trigger: "item",
-        backgroundColor: "#18201a",
-        borderColor: "rgba(255,255,255,0.14)",
-        borderWidth: 1,
-        textStyle: { color: "#eef2e9", fontSize: 12 },
-        valueFormatter: (value) => `${formatNumber(Number(value))} 行`,
-      },
-      series: [
-        {
-          type: "pie",
-          radius: ["64%", "84%"],
-          center: ["50%", "50%"],
-          avoidLabelOverlap: true,
-          label: { show: false },
-          labelLine: { show: false },
-          itemStyle: { borderColor: "transparent", borderWidth: 2 },
-          emphasis: { scale: true, scaleSize: 5 },
-          data: donutData.map((item) => ({
-            name: item.name,
-            value: item.value,
-            itemStyle: { color: item.color },
-          })),
-        },
-      ],
-    }),
-    [donutData],
+  const languageData = useMemo(
+    () => toLanguageData(data?.languages ?? []),
+    [data?.languages],
   );
+  const donutOption = useMemo(() => languageDonutOption(languageData), [languageData]);
 
   if (!data && loading) {
     return (
@@ -125,8 +73,7 @@ export function DashboardPage() {
 
   if (!data) return null;
 
-  const readyCount =
-    data.statuses.find((slice) => slice.status === "ready")?.count ?? 0;
+  const readyCount = data.statuses.find((slice) => slice.status === "ready")?.count ?? 0;
 
   return (
     <>
@@ -216,7 +163,7 @@ export function DashboardPage() {
                   查看仓库
                 </Link>
               </div>
-              {donutData.length === 0 ? (
+              {languageData.length === 0 ? (
                 <EmptyState
                   title="尚无统计快照"
                   description="首次同步完成后会自动生成语言分布。"
@@ -232,7 +179,7 @@ export function DashboardPage() {
                     </div>
                   </div>
                   <ul className="lang-legend">
-                    {donutData.map((item) => (
+                    {languageData.map((item) => (
                       <li key={item.name}>
                         {item.other ? (
                           <span className="lang-legend-name">

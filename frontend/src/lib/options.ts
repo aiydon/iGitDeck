@@ -41,11 +41,6 @@ export const SORT_OPTIONS: Option<SortField>[] = [
   { value: "name", label: "仓库名" },
 ];
 
-export const ORDER_OPTIONS: Option<SortOrder>[] = [
-  { value: "desc", label: "降序" },
-  { value: "asc", label: "升序" },
-];
-
 const PLATFORM_LABELS = Object.fromEntries(
   PLATFORM_OPTIONS.map((option) => [option.value, option.label]),
 ) as Record<Platform, string>;
@@ -53,10 +48,6 @@ const PLATFORM_LABELS = Object.fromEntries(
 const SOURCE_LABELS = Object.fromEntries(
   SOURCE_OPTIONS.map((option) => [option.value, option.label]),
 ) as Record<RepoSource, string>;
-
-const SORT_LABELS = Object.fromEntries(
-  SORT_OPTIONS.map((option) => [option.value, option.label]),
-) as Record<SortField, string>;
 
 const REPO_STATUS_LABELS: Record<RepoStatus, string> = {
   pending: "待同步",
@@ -78,7 +69,6 @@ const SYNC_TRIGGER_LABELS: Record<SyncTrigger, string> = {
 
 export const platformLabel = (value: Platform): string => PLATFORM_LABELS[value];
 export const sourceLabel = (value: RepoSource): string => SOURCE_LABELS[value];
-export const sortLabel = (value: SortField): string => SORT_LABELS[value];
 export const repoStatusLabel = (value: RepoStatus): string => REPO_STATUS_LABELS[value];
 export const syncRunStatusLabel = (value: SyncRunStatus): string =>
   SYNC_RUN_STATUS_LABELS[value];
