@@ -382,6 +382,36 @@ class RepoRepository:
             )
         return cursor.rowcount
 
+    def reset_stale_syncing(self, *, older_than: datetime, message: str) -> list[int]:
+        """Fail syncs stuck in `syncing` past the longest legitimate run.
+
+        Only a vanished task (cancelled thread, dead worker) reaches this; a live
+        sync is bounded by the git/scc timeouts and finishes first.
+        """
+        with self.db.transaction() as connection:
+            rows = connection.execute(
+                """
+                SELECT id FROM repos
+                WHERE status = ?
+                  AND (last_attempt_at IS NULL OR last_attempt_at <= ?)
+                """,
+                (RepoStatus.SYNCING.value, to_epoch(older_than)),
+            ).fetchall()
+            repo_ids = [row["id"] for row in rows]
+            if repo_ids:
+                placeholders = ", ".join("?" for _ in repo_ids)
+                connection.execute(
+                    f"""
+                    UPDATE repos
+                    SET status = ?,
+                        error_message = ?,
+                        consecutive_failures = consecutive_failures + 1
+                    WHERE id IN ({placeholders})
+                    """,
+                    (RepoStatus.ERROR.value, message, *repo_ids),
+                )
+        return repo_ids
+
     def counts_by(self, column: str) -> dict[str, int]:
         if column not in {"platform", "source", "status"}:
             raise ValueError(f"unsupported facet column: {column}")

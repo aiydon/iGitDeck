@@ -95,9 +95,17 @@ def build_container(settings: Settings) -> Container:
     scheduler = SyncScheduler(
         coordinator=coordinator,
         repos=repos,
+        runs=sync_runs,
         policy=policy,
         poll_seconds=settings.scheduler_poll_seconds,
         batch_size=settings.sync_batch_size,
+        # One sync may run git twice (fetch + worktree reset) before scc.
+        stale_after_seconds=(
+            2 * settings.git_timeout_seconds
+            + settings.scc_timeout_seconds
+            + settings.metadata_timeout_seconds
+            + 300
+        ),
     )
     catalog = CatalogService(
         repos=repos,

@@ -7,7 +7,7 @@ from typing import ClassVar
 import pytest
 
 import igitdeck.services.scheduler as scheduler_module
-from igitdeck.models.repo import Platform, RepoIdentity, RepoSource
+from igitdeck.models.repo import Platform, RepoIdentity, RepoSource, RepoStatus
 from igitdeck.models.sync import SyncTrigger
 from igitdeck.services.container import Container
 from igitdeck.services.policy import SyncPolicy
@@ -88,6 +88,7 @@ def test_scheduler_tick_requests_due_repositories(
     scheduler = SyncScheduler(
         coordinator=coordinator,
         repos=container.repos,
+        runs=container.sync_runs,
         policy=SyncPolicy(
             interval_seconds=3600,
             retry_base_seconds=300,
@@ -95,6 +96,7 @@ def test_scheduler_tick_requests_due_repositories(
         ),
         poll_seconds=15,
         batch_size=10,
+        stale_after_seconds=3600,
     )
 
     asyncio.run(scheduler.tick())
@@ -105,3 +107,73 @@ def test_scheduler_tick_requests_due_repositories(
     assert len(DummyBar.instances) == 1
     assert DummyBar.instances[0].total == 2
     assert DummyBar.instances[0].updated == 2
+
+
+def test_scheduler_fails_stale_syncing_rows(
+    container: Container, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    now = datetime.now(UTC)
+    stuck = make_repo(container, "stuck")
+    container.repos.mark_syncing(stuck.id, now - timedelta(hours=2))
+    run_id = container.sync_runs.start(
+        stuck.id, trigger=SyncTrigger.SCHEDULED, started_at=now - timedelta(hours=2)
+    )
+
+    monkeypatch.setattr(scheduler_module, "tqdm", DummyBar)
+    DummyBar.instances.clear()
+    coordinator = FakeCoordinator()
+    scheduler = SyncScheduler(
+        coordinator=coordinator,
+        repos=container.repos,
+        runs=container.sync_runs,
+        policy=SyncPolicy(
+            interval_seconds=3600,
+            retry_base_seconds=300,
+            retry_max_seconds=1200,
+        ),
+        poll_seconds=15,
+        batch_size=10,
+        stale_after_seconds=2700,
+    )
+
+    asyncio.run(scheduler.tick())
+
+    recovered = container.repos.get(stuck.id)
+    assert recovered is not None
+    assert recovered.status is not RepoStatus.SYNCING
+    assert recovered.consecutive_failures == 1
+    assert recovered.error_message == scheduler_module.STALE_SYNC_MESSAGE
+    runs = container.sync_runs.for_repo(stuck.id, 10)
+    assert [run.id for run in runs] == [run_id]
+    assert runs[0].status.value == "failed"
+
+
+def test_scheduler_keeps_live_sync_running(
+    container: Container, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    now = datetime.now(UTC)
+    fresh = make_repo(container, "fresh-sync")
+    container.repos.mark_syncing(fresh.id, now - timedelta(minutes=5))
+
+    monkeypatch.setattr(scheduler_module, "tqdm", DummyBar)
+    coordinator = FakeCoordinator()
+    scheduler = SyncScheduler(
+        coordinator=coordinator,
+        repos=container.repos,
+        runs=container.sync_runs,
+        policy=SyncPolicy(
+            interval_seconds=3600,
+            retry_base_seconds=300,
+            retry_max_seconds=1200,
+        ),
+        poll_seconds=15,
+        batch_size=10,
+        stale_after_seconds=2700,
+    )
+
+    asyncio.run(scheduler.tick())
+
+    live = container.repos.get(fresh.id)
+    assert live is not None
+    assert live.status is RepoStatus.SYNCING
+    assert live.consecutive_failures == 0

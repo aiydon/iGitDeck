@@ -86,6 +86,33 @@ class SyncRunRepository:
             ).fetchall()
         return [_view(row) for row in rows]
 
+    def fail_running_for_repos(
+        self,
+        repo_ids: list[int],
+        *,
+        finished_at: datetime,
+        message: str,
+    ) -> int:
+        if not repo_ids:
+            return 0
+        placeholders = ", ".join("?" for _ in repo_ids)
+        with self.db.transaction() as connection:
+            cursor = connection.execute(
+                f"""
+                UPDATE sync_runs
+                SET status = ?, finished_at = ?, message = ?
+                WHERE status = ? AND repo_id IN ({placeholders})
+                """,
+                (
+                    SyncRunStatus.FAILED.value,
+                    to_epoch(finished_at),
+                    message,
+                    SyncRunStatus.RUNNING.value,
+                    *repo_ids,
+                ),
+            )
+        return cursor.rowcount
+
     def recover_interrupted(self, finished_at: datetime) -> int:
         with self.db.transaction() as connection:
             cursor = connection.execute(
