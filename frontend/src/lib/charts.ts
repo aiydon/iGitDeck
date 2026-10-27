@@ -16,6 +16,13 @@ export interface LanguageDatum {
 const OTHER_COLOR = "#98a096";
 const MAX_SEGMENTS = 7;
 
+const TOOLTIP_STYLE = {
+  backgroundColor: "#18201a",
+  borderColor: "rgba(255,255,255,0.14)",
+  borderWidth: 1,
+  textStyle: { color: "#eef2e9", fontSize: 12 },
+} as const;
+
 /** Keep the biggest languages, folding the tail into one "其他" slice. */
 export function toLanguageData(languages: LanguageSlice[]): LanguageDatum[] {
   const shown = languages.slice(0, MAX_SEGMENTS).map((language) => ({
@@ -45,10 +52,7 @@ export function languageDonutOption(data: LanguageDatum[]): EChartsOption {
     backgroundColor: "transparent",
     tooltip: {
       trigger: "item",
-      backgroundColor: "#18201a",
-      borderColor: "rgba(255,255,255,0.14)",
-      borderWidth: 1,
-      textStyle: { color: "#eef2e9", fontSize: 12 },
+      ...TOOLTIP_STYLE,
       valueFormatter: (value) => `${formatNumber(Number(value))} 行`,
     },
     series: [
@@ -77,10 +81,7 @@ export function trendChartOption(points: TrendPoint[]): EChartsOption {
     grid: { left: 52, right: 24, top: 24, bottom: 42 },
     tooltip: {
       trigger: "axis",
-      backgroundColor: "#18201a",
-      borderColor: "rgba(255,255,255,0.14)",
-      borderWidth: 1,
-      textStyle: { color: "#eef2e9", fontSize: 12 },
+      ...TOOLTIP_STYLE,
     },
     xAxis: {
       type: "category",

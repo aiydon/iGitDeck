@@ -138,7 +138,6 @@ export function ReposPage() {
         <RepoFilters
           state={state}
           facets={facets}
-          refreshing={loading && Boolean(data)}
           onChange={updateParam}
           onReset={() => setParams(new URLSearchParams(), { replace: true })}
         />

@@ -10,12 +10,10 @@ import {
 } from "../../lib/options";
 import type { RepoQueryState } from "../../lib/repoQuery";
 import { ArrowUpDownIcon, CloseIcon, SearchIcon } from "../icons";
-import { Spinner } from "../Spinner";
 
 interface RepoFiltersProps {
   state: RepoQueryState;
   facets: FilterOptions | null;
-  refreshing: boolean;
   onChange: (key: string, value: string | null) => void;
   onReset: () => void;
 }
@@ -28,13 +26,7 @@ function facetCounts(facets: FilterOptions | null, key: keyof FilterOptions) {
   return new Map((facets?.[key] ?? []).map((facet) => [facet.value, facet.count]));
 }
 
-export function RepoFilters({
-  state,
-  facets,
-  refreshing,
-  onChange,
-  onReset,
-}: RepoFiltersProps) {
+export function RepoFilters({ state, facets, onChange, onReset }: RepoFiltersProps) {
   const [search, setSearch] = useState(state.q);
   const debouncedSearch = useDebouncedValue(search, 350);
 
@@ -81,7 +73,6 @@ export function RepoFilters({
             <CloseIcon size={14} />
           </button>
         )}
-        {refreshing && <Spinner label="刷新中" />}
       </form>
 
       <div className="filter-row">
