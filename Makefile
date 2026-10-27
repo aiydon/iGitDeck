@@ -3,7 +3,7 @@ SHELL := /bin/bash
 
 export PATH := $(CURDIR)/bin:$(PATH)
 
-.PHONY: help install scc env types build run api-dev web-dev crawler crawl-once test lint format typecheck hooks clean
+.PHONY: help install scc env types build run api-dev web-dev crawler crawl-once import-user test lint format typecheck hooks clean
 
 help:
 	@printf '%s\n' \
@@ -12,6 +12,7 @@ help:
 		'  make run        Run the FastAPI service (uvicorn)' \
 		'  make crawler    Run the GitHub Trending crawler loop' \
 		'  make crawl-once Run one crawler pass' \
+		'  make import-user GITHUB_USER=<name>  Import all public GitHub repos of a user' \
 		'  make test       Run the backend test suite' \
 		'  make lint       Ruff check + frontend typecheck' \
 		'  make format     Ruff format/fix' \
@@ -60,6 +61,10 @@ crawler:
 
 crawl-once:
 	uv run python -m igitdeck.crawler --once
+
+import-user:
+	@test -n "$(GITHUB_USER)" || { echo "用法: make import-user GITHUB_USER=<github-username>"; exit 1; }
+	uv run python -m igitdeck.crawler.github_user "$(GITHUB_USER)"
 
 test:
 	uv run pytest

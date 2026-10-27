@@ -88,6 +88,23 @@ uv run python -m igitdeck.crawler --once --dry-run   # 只打印发现结果
 
 `IGD_CRAWLER_LANGUAGES=python,rust` 可抓取指定语言；空值表示全语言。`IGD_CRAWLER_SINCE` 支持 `daily`、`weekly`、`monthly`。
 
+### 导入某个 GitHub 用户 / 组织的全部仓库
+
+```bash
+make import-user GITHUB_USER=aiydon
+```
+
+等价于 `uv run python -m igitdeck.crawler.github_user aiydon`，通过 GitHub 公开 API
+分页列出该用户的公开仓库，再逐个提交到 `POST /api/repos`（来源记为手动）：
+
+- 默认跳过 fork 与空仓库，`--include-forks` 可包含 fork
+- `--limit 20` 限制导入数量，`--dry-run` 只打印不提交
+- 大量仓库请留意 GitHub 未认证 API 的速率限制（60 次/小时，每页 100 个仓库）
+
+```bash
+uv run python -m igitdeck.crawler.github_user aiydon --dry-run --limit 20
+```
+
 cron 示例：
 
 ```cron
@@ -195,10 +212,11 @@ data/
 | `IGD_SYNC_CONCURRENCY` | `4` | 同时同步的仓库数上限 |
 | `IGD_SYNC_INTERVAL_MINUTES` | `60` | 就绪仓库刷新周期 |
 | `IGD_SYNC_RETRY_BASE_MINUTES` / `_MAX_MINUTES` | `5` / `120` | 失败重试指数退避与上限 |
-| `IGD_GIT_TIMEOUT_SECONDS` | `900` | clone/fetch/worktree 超时 |
+| `IGD_GIT_TIMEOUT_SECONDS` | `1800` | clone/fetch/worktree 超时 |
 | `IGD_GIT_HTTP_CONCURRENCY` | `4` | upload-pack 并发上限 |
+| `IGD_GIT_HTTP_TIMEOUT_SECONDS` | `1800` | upload-pack 超时 |
 | `IGD_GIT_HTTP_MAX_REQUEST_BYTES` | `8388608` | upload-pack 请求体（含解压后）上限，超出返回 413 |
-| `IGD_SCC_BINARY` / `IGD_SCC_TIMEOUT_SECONDS` | `scc` / `300` | scc 路径与超时 |
+| `IGD_SCC_BINARY` / `IGD_SCC_TIMEOUT_SECONDS` | `scc` / `600` | scc 路径与超时 |
 | `IGD_FETCH_METADATA` | `true` | 手动添加时通过 GitHub API 补全描述（失败不影响添加） |
 | `IGD_CRAWLER_API_BASE_URL` | `http://127.0.0.1:8000` | 爬虫调用主进程的地址 |
 | `IGD_CRAWLER_LANGUAGES` / `IGD_CRAWLER_SINCE` | 空 / `daily` | Trending 语言与时间范围 |

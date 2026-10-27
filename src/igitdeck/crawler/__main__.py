@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import logging
 import sys
 import time
@@ -11,8 +10,9 @@ from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 from igitdeck.config import Settings, load_settings
+from igitdeck.crawler.client import submit_repo
 from igitdeck.crawler.parser import parse_trending
-from igitdeck.models.repo import RepoAddResult, RepoCreateRequest, RepoSource
+from igitdeck.models.repo import RepoCreateRequest, RepoSource
 
 logger = logging.getLogger(__name__)
 
@@ -32,19 +32,6 @@ def fetch_trending(settings: Settings, language: str | None) -> str:
     )
     with urlopen(request, timeout=settings.crawler_http_timeout_seconds) as response:
         return response.read(5_000_000).decode("utf-8", errors="replace")
-
-
-def submit_repo(settings: Settings, payload: RepoCreateRequest) -> RepoAddResult:
-    endpoint = f"{settings.crawler_api_base_url.rstrip('/')}/api/repos"
-    body = json.dumps(payload.model_dump(mode="json")).encode("utf-8")
-    request = Request(
-        endpoint,
-        data=body,
-        method="POST",
-        headers={"Content-Type": "application/json"},
-    )
-    with urlopen(request, timeout=settings.crawler_http_timeout_seconds) as response:
-        return RepoAddResult.model_validate(json.loads(response.read()))
 
 
 def crawl_once(settings: Settings, *, dry_run: bool) -> int:
