@@ -14,12 +14,13 @@ from pydantic import BaseModel, ConfigDict
 from igitdeck.clock import from_epoch, utcnow
 from igitdeck.git import GitClient, GitCommandError
 from igitdeck.models.repo import RepoIdentity, RepoRecord, RepoStats
-from igitdeck.models.sync import SyncRunStatus, SyncTrigger
+from igitdeck.models.sync import SyncPhase, SyncRunStatus, SyncTrigger
 from igitdeck.paths import StoragePaths
 from igitdeck.repositories.repos import RepoRepository
 from igitdeck.repositories.stats import StatsRepository
 from igitdeck.repositories.sync_runs import SyncRunRepository
 from igitdeck.services.metadata import MetadataClient
+from igitdeck.services.progress import ProgressTracker
 from igitdeck.services.readme import ReadmeService, ReadmeSource
 from igitdeck.services.stats_collector import StatsCollector, StatsSummary
 from igitdeck.services.trends import TrendService
@@ -27,6 +28,23 @@ from igitdeck.services.trends import TrendService
 logger = logging.getLogger(__name__)
 
 _MAX_ERROR_LENGTH = 2000
+
+# Maps git's own progress phases onto the overall 0-100 sync bar.
+# (start, end, label) on the overall 0-100 bar.
+_GIT_PHASE_SCALE: dict[str, tuple[int, int, str]] = {
+    "enumerating objects": (2, 8, "枚举对象"),
+    "counting objects": (8, 20, "统计对象"),
+    "compressing objects": (20, 34, "压缩对象"),
+    "receiving objects": (34, 86, "接收对象"),
+    "resolving deltas": (86, 90, "解析增量"),
+    "updating references": (90, 91, "更新引用"),
+}
+
+
+def scale_git_progress(git_phase: str, percent: int) -> tuple[int, str]:
+    """Map a git phase percentage onto the overall bar and a UI label."""
+    start, end, label = _GIT_PHASE_SCALE.get(git_phase.lower(), (5, 86, git_phase))
+    return start + round((end - start) * min(percent, 100) / 100), label
 
 
 class _Mirror(BaseModel):
@@ -66,6 +84,7 @@ class SyncService:
         readme: ReadmeService,
         metadata: MetadataClient,
         trends: TrendService,
+        progress: ProgressTracker,
     ) -> None:
         self.repos = repos
         self.stats = stats
@@ -76,6 +95,7 @@ class SyncService:
         self.readme = readme
         self.metadata = metadata
         self.trends = trends
+        self.progress = progress
 
     def sync(self, repo_id: int, trigger: SyncTrigger) -> None:
         repo = self.repos.get(repo_id)
@@ -83,6 +103,7 @@ class SyncService:
             logger.warning("skip sync: repository %s no longer exists", repo_id)
             return
 
+        self.progress.update(repo_id, phase=SyncPhase.QUEUED, percent=0)
         started_at = utcnow()
         started = time.monotonic()
         run_id = self.runs.start(repo_id, trigger=trigger, started_at=started_at)
@@ -92,22 +113,28 @@ class SyncService:
         try:
             mirror = self._update_bare(repo)
             commit_sha = mirror.commit_sha
+            self.progress.update(repo_id, phase=SyncPhase.WORKTREE, percent=94)
             self._refresh_worktree(mirror)
+            self.progress.update(repo_id, phase=SyncPhase.ANALYZING, percent=96)
             capture = self._capture(repo, mirror)
+            self.progress.update(repo_id, phase=SyncPhase.ANALYZING, percent=99)
 
             self._persist(repo_id, capture, synced_at=utcnow())
-            self.trends.refresh(
-                repo_id,
-                bare=mirror.bare,
-                branch=mirror.branch,
-                commit_sha=mirror.commit_sha,
-            )
             self.runs.finish(
                 run_id,
                 status=SyncRunStatus.SUCCESS,
                 finished_at=utcnow(),
                 message=f"{capture.branch} @ {capture.commit_sha[:10]}",
                 commit_sha=capture.commit_sha,
+            )
+            # The repository is ready; git insights are derived data and must
+            # not keep the progress bar alive after the status flips.
+            self.progress.clear(repo_id)
+            self.trends.refresh(
+                repo_id,
+                bare=mirror.bare,
+                branch=mirror.branch,
+                commit_sha=mirror.commit_sha,
             )
             logger.info(
                 "synced %s/%s @ %s in %.1fs (%s files, %s code lines)",
@@ -120,6 +147,8 @@ class SyncService:
             )
         except Exception as exc:  # every failure belongs in the run log
             self._record_failure(repo, run_id, commit_sha, exc)
+        finally:
+            self.progress.clear(repo_id)
 
     def _update_bare(self, repo: RepoRecord) -> _Mirror:
         bare = self.paths.bare_repo(repo.platform, repo.owner, repo.name)
@@ -128,9 +157,17 @@ class SyncService:
         worktree.parent.mkdir(parents=True, exist_ok=True)
 
         if bare.is_dir():
-            self.git.fetch(bare)
+            phase = SyncPhase.FETCHING
+            self.progress.update(repo.id, phase=phase, percent=1, detail="抓取更新")
+            self.git.fetch(
+                bare,
+                on_progress=lambda raw, percent: self._report_git(repo.id, phase, raw, percent),
+            )
         else:
+            phase = SyncPhase.CLONING
+            self.progress.update(repo.id, phase=phase, percent=1, detail="克隆镜像")
             self._clone_mirror(repo, bare)
+        self.progress.update(repo.id, phase=phase, percent=92)
 
         branch = self._resolve_default_branch(repo, bare)
         self.git.set_default_branch(bare, branch)
@@ -213,10 +250,23 @@ class SyncService:
         except Exception:
             logger.exception("failed to record sync failure for repo %s", repo.id)
 
+    def _report_git(self, repo_id: int, phase: SyncPhase, git_phase: str, percent: int) -> None:
+        scaled, label = scale_git_progress(git_phase, percent)
+        self.progress.update(repo_id, phase=phase, percent=scaled, detail=label)
+
     def _clone_mirror(self, repo: RepoRecord, bare: Path) -> None:
+        # A killed process cannot run its cleanup; drop any orphaned staging dirs.
+        for stale in bare.parent.glob(f"{bare.name}.tmp-*"):
+            shutil.rmtree(stale, ignore_errors=True)
         temp = bare.with_name(f"{bare.name}.tmp-{uuid4().hex}")
         try:
-            self.git.clone_mirror(repo.url, temp)
+            self.git.clone_mirror(
+                repo.url,
+                temp,
+                on_progress=lambda raw, percent: self._report_git(
+                    repo.id, SyncPhase.CLONING, raw, percent
+                ),
+            )
             temp.rename(bare)
         finally:
             if temp.exists():

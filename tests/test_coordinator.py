@@ -4,8 +4,9 @@ import asyncio
 import threading
 import time
 
-from igitdeck.models.sync import SyncTrigger
+from igitdeck.models.sync import SyncPhase, SyncTrigger
 from igitdeck.services.coordinator import SyncCoordinator
+from igitdeck.services.progress import ProgressTracker
 
 
 class SlowSync:
@@ -28,12 +29,16 @@ class SlowSync:
 def test_coordinator_excludes_duplicates_and_limits_concurrency() -> None:
     async def scenario() -> None:
         fake = SlowSync()
-        coordinator = SyncCoordinator(fake, concurrency=2)
+        tracker = ProgressTracker()
+        coordinator = SyncCoordinator(fake, concurrency=2, progress=tracker)
 
         first = coordinator.request(1, SyncTrigger.MANUAL)
         assert first is not None
         assert coordinator.request(1, SyncTrigger.MANUAL) is None
         assert coordinator.is_running(1)
+        queued = tracker.get(1)
+        assert queued is not None
+        assert queued.phase is SyncPhase.QUEUED
 
         tasks = [coordinator.request(repo_id, SyncTrigger.SCHEDULED) for repo_id in (2, 3, 4)]
         assert all(task is not None for task in tasks)
@@ -44,6 +49,7 @@ def test_coordinator_excludes_duplicates_and_limits_concurrency() -> None:
         assert not coordinator.is_running(1)
         for repo_id in (1, 2, 3, 4):
             assert not coordinator.is_running(repo_id)
+            assert tracker.get(repo_id) is None
 
         again = coordinator.request(1, SyncTrigger.MANUAL)
         assert again is not None

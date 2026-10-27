@@ -36,6 +36,7 @@ from igitdeck.repositories.stats import StatsRepository
 from igitdeck.repositories.sync_runs import SyncRunRepository
 from igitdeck.search import build_fts_query
 from igitdeck.services.metadata import MetadataClient
+from igitdeck.services.progress import ProgressTracker
 from igitdeck.services.readme import ReadmeService
 from igitdeck.services.trends import TrendService
 
@@ -55,6 +56,7 @@ class CatalogService:
         paths: StoragePaths,
         metadata: MetadataClient,
         trends: TrendService,
+        progress: ProgressTracker,
     ) -> None:
         self.repos = repos
         self.stats = stats
@@ -63,6 +65,7 @@ class CatalogService:
         self.paths = paths
         self.metadata = metadata
         self.trends = trends
+        self.progress = progress
 
     def add(
         self,
@@ -98,7 +101,12 @@ class CatalogService:
     def list_repos(self, query: RepoQuery) -> RepoPage:
         items, total = self.repos.list_page(query, build_fts_query(query.q))
         summaries = [
-            RepoSummary.from_record(item.repo, stats=item.stats, snippet=item.snippet)
+            RepoSummary.from_record(
+                item.repo,
+                stats=item.stats,
+                snippet=item.snippet,
+                progress=self.progress.get(item.repo.id),
+            )
             for item in items
         ]
         pages = (total + query.page_size - 1) // query.page_size if total else 0
@@ -143,7 +151,9 @@ class CatalogService:
 
         insights = self._insights(record, stats)
         return RepoDetail(
-            repo=RepoSummary.from_record(record, stats=stats),
+            repo=RepoSummary.from_record(
+                record, stats=stats, progress=self.progress.get(record.id)
+            ),
             readme=readme_view,
             trend=insights.points if insights else [],
             activity=insights.activity if insights else [],
@@ -221,7 +231,11 @@ class CatalogService:
         return self.repos.get_by_identity(identity.platform, identity.owner, identity.name)
 
     def _summary(self, record: RepoRecord) -> RepoSummary:
-        return RepoSummary.from_record(record, stats=self._current_stats(record))
+        return RepoSummary.from_record(
+            record,
+            stats=self._current_stats(record),
+            progress=self.progress.get(record.id),
+        )
 
     def _add_result(self, record: RepoRecord, *, created: bool) -> RepoAddResult:
         return RepoAddResult(repo=self._summary(record), created=created)

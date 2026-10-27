@@ -17,6 +17,7 @@ from igitdeck.services.files import FileService
 from igitdeck.services.git_http import GitHttpService
 from igitdeck.services.metadata import MetadataClient
 from igitdeck.services.policy import SyncPolicy
+from igitdeck.services.progress import ProgressTracker
 from igitdeck.services.readme import ReadmeService
 from igitdeck.services.scheduler import SyncScheduler
 from igitdeck.services.stats_collector import SccStatsCollector
@@ -35,6 +36,7 @@ class Container:
         stats: StatsRepository,
         sync_runs: SyncRunRepository,
         trends: TrendService,
+        progress: ProgressTracker,
         readme: ReadmeService,
         files: FileService,
         metadata: MetadataClient,
@@ -52,6 +54,7 @@ class Container:
         self.stats = stats
         self.sync_runs = sync_runs
         self.trends = trends
+        self.progress = progress
         self.readme = readme
         self.files = files
         self.metadata = metadata
@@ -81,6 +84,7 @@ def build_container(settings: Settings) -> Container:
     )
     git = GitClient(settings.git_timeout_seconds)
     trends = TrendService(git, trend_repository)
+    progress = ProgressTracker()
     collector = SccStatsCollector(settings.scc_binary, settings.scc_timeout_seconds)
     sync = SyncService(
         repos=repos,
@@ -92,8 +96,9 @@ def build_container(settings: Settings) -> Container:
         readme=readme,
         metadata=metadata,
         trends=trends,
+        progress=progress,
     )
-    coordinator = SyncCoordinator(sync, settings.sync_concurrency)
+    coordinator = SyncCoordinator(sync, settings.sync_concurrency, progress)
     policy = SyncPolicy(
         interval_seconds=settings.sync_interval_minutes * 60,
         retry_base_seconds=settings.sync_retry_base_minutes * 60,
@@ -116,6 +121,7 @@ def build_container(settings: Settings) -> Container:
         paths=paths,
         metadata=metadata,
         trends=trends,
+        progress=progress,
     )
     dashboard = DashboardService(
         repos=repos,
@@ -139,6 +145,7 @@ def build_container(settings: Settings) -> Container:
         stats=stats,
         sync_runs=sync_runs,
         trends=trends,
+        progress=progress,
         readme=readme,
         files=files,
         metadata=metadata,

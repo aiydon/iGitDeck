@@ -15,10 +15,27 @@ class SyncTrigger(StrEnum):
     SCHEDULED = "scheduled"
 
 
+class SyncPhase(StrEnum):
+    QUEUED = "queued"
+    CLONING = "cloning"
+    FETCHING = "fetching"
+    WORKTREE = "worktree"
+    ANALYZING = "analyzing"
+
+
 class SyncRunStatus(StrEnum):
     RUNNING = "running"
     SUCCESS = "success"
     FAILED = "failed"
+
+
+class SyncProgress(BaseModel):
+    """Live progress of one running sync; in memory only."""
+
+    phase: SyncPhase
+    percent: int = Field(ge=0, le=100)
+    detail: str | None = None
+    updated_at: datetime
 
 
 class SyncRunRecord(BaseModel):

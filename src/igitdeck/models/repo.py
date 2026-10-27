@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field, computed_field, field_validator
 
 from igitdeck.models.errors import InvalidRepoUrl
 from igitdeck.models.naming import RepoNaming
-from igitdeck.models.sync import SyncRunView
+from igitdeck.models.sync import SyncProgress, SyncRunView
 from igitdeck.urls import clone_path
 
 
@@ -159,6 +159,7 @@ class RepoSummary(RepoNaming):
     consecutive_failures: int
     stats: RepoStats | None
     snippet: SearchSnippet | None = None
+    progress: SyncProgress | None = None
 
     @computed_field
     @property
@@ -172,6 +173,7 @@ class RepoSummary(RepoNaming):
         *,
         stats: RepoStats | None = None,
         snippet: SearchSnippet | None = None,
+        progress: SyncProgress | None = None,
     ) -> RepoSummary:
         return cls(
             id=record.id,
@@ -191,6 +193,7 @@ class RepoSummary(RepoNaming):
             consecutive_failures=record.consecutive_failures,
             stats=stats,
             snippet=snippet,
+            progress=progress,
         )
 
 
@@ -198,6 +201,7 @@ class RepoWithStats(BaseModel):
     repo: RepoRecord
     stats: RepoStats | None
     snippet: SearchSnippet | None = None
+    progress: SyncProgress | None = None
 
 
 class TrendPoint(BaseModel):

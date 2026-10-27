@@ -6,7 +6,8 @@ import asyncio
 import logging
 from typing import Protocol
 
-from igitdeck.models.sync import SyncTrigger
+from igitdeck.models.sync import SyncPhase, SyncTrigger
+from igitdeck.services.progress import ProgressTracker
 
 logger = logging.getLogger(__name__)
 
@@ -16,8 +17,9 @@ class SyncRunner(Protocol):
 
 
 class SyncCoordinator:
-    def __init__(self, sync: SyncRunner, concurrency: int) -> None:
+    def __init__(self, sync: SyncRunner, concurrency: int, progress: ProgressTracker) -> None:
         self.sync = sync
+        self.progress = progress
         self._semaphore = asyncio.Semaphore(concurrency)
         self._running: set[int] = set()
         self._tasks: set[asyncio.Task[None]] = set()
@@ -27,6 +29,7 @@ class SyncCoordinator:
         if repo_id in self._running:
             return None
         self._running.add(repo_id)
+        self.progress.update(repo_id, phase=SyncPhase.QUEUED, percent=0)
         task = asyncio.create_task(
             self._execute(repo_id, trigger),
             name=f"sync-repo-{repo_id}",
@@ -47,6 +50,7 @@ class SyncCoordinator:
     def _finished(self, repo_id: int, task: asyncio.Task[None]) -> None:
         self._running.discard(repo_id)
         self._tasks.discard(task)
+        self.progress.clear(repo_id)
 
     def is_running(self, repo_id: int) -> bool:
         return repo_id in self._running

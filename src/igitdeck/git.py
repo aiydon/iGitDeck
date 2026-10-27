@@ -3,10 +3,16 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
+import threading
+from collections import deque
+from collections.abc import Callable
 from pathlib import Path
 
 from pydantic import BaseModel, computed_field
+
+ProgressCallback = Callable[[str, int], None]
 
 
 class GitCommandError(RuntimeError):
@@ -16,7 +22,19 @@ class GitCommandError(RuntimeError):
 class GitResult(BaseModel):
     stdout: str
     stderr: str
-    args: list[str]
+
+
+_PROGRESS_LINE = re.compile(
+    r"^(?:remote:\s*)?(?P<phase>[A-Za-z][A-Za-z ]*?):\s+(?P<percent>\d{1,3})%"
+)
+
+
+def parse_progress_line(line: str) -> tuple[str, int] | None:
+    """Return `(phase, percent)` for a git progress line, else None."""
+    match = _PROGRESS_LINE.match(line.strip())
+    if match is None:
+        return None
+    return match["phase"].strip(), min(100, int(match["percent"]))
 
 
 class CommitLineDelta(BaseModel):
@@ -39,14 +57,20 @@ class CommitAuthor(BaseModel):
 
 
 class GitClient:
-    def __init__(self, timeout_seconds: int) -> None:
+    def __init__(self, timeout_seconds: int, binary: str = "git") -> None:
         self.timeout_seconds = timeout_seconds
+        self.binary = binary
 
-    def _run(self, args: list[str], *, cwd: Path | None = None) -> GitResult:
+    @staticmethod
+    def _environment() -> dict[str, str]:
         environment = os.environ.copy()
         environment["GIT_TERMINAL_PROMPT"] = "0"
         environment["LC_ALL"] = "C"
-        command = ["git", *args]
+        return environment
+
+    def _run(self, args: list[str], *, cwd: Path | None = None) -> GitResult:
+        environment = self._environment()
+        command = [self.binary, *args]
         try:
             completed = subprocess.run(
                 command,
@@ -64,18 +88,94 @@ class GitClient:
         result = GitResult(
             stdout=completed.stdout.strip(),
             stderr=completed.stderr.strip(),
-            args=command,
         )
         if completed.returncode != 0:
             detail = result.stderr or result.stdout or f"exit {completed.returncode}"
             raise GitCommandError(f"git {args[0]} 失败: {detail[-2000:]}")
         return result
 
-    def clone_mirror(self, url: str, destination: Path) -> None:
-        self._run(["clone", "--mirror", "--quiet", url, str(destination)])
+    def _stream(self, args: list[str], on_progress: ProgressCallback) -> None:
+        """Run git with progress on stderr, reporting it as it arrives.
 
-    def fetch(self, bare: Path) -> None:
-        self._run(["--git-dir", str(bare), "fetch", "--prune", "--quiet", "origin"])
+        stderr is merged into stdout and read line by line. A timer kills the
+        process when the timeout elapses, which also unblocks the reader.
+        """
+        command = [self.binary, *args]
+        try:
+            process = subprocess.Popen(
+                command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+                env=self._environment(),
+            )
+        except FileNotFoundError as exc:
+            raise GitCommandError("系统未安装 git") from exc
+
+        timed_out = threading.Event()
+
+        def kill() -> None:
+            timed_out.set()
+            process.kill()
+
+        timer = threading.Timer(self.timeout_seconds, kill)
+        timer.daemon = True
+        timer.start()
+
+        output: deque[str] = deque(maxlen=40)
+        messages: deque[str] = deque(maxlen=20)
+        returncode: int | None = None
+        try:
+            assert process.stdout is not None
+            for raw in process.stdout:
+                line = raw.strip()
+                if not line:
+                    continue
+                output.append(line)
+                progress = parse_progress_line(line)
+                if progress is None:
+                    messages.append(line)
+                else:
+                    on_progress(*progress)
+            returncode = process.wait()
+        finally:
+            timer.cancel()
+            if process.stdout is not None:
+                process.stdout.close()
+            if process.poll() is None:
+                process.kill()
+                process.wait()
+
+        command_name = args[0]
+        if timed_out.is_set():
+            raise GitCommandError(f"git {command_name} 超过 {self.timeout_seconds}s 未完成")
+        if returncode != 0:
+            detail = "\n".join(messages) or "\n".join(output) or f"exit {returncode}"
+            raise GitCommandError(f"git {command_name} 失败: {detail[-2000:]}")
+
+    def clone_mirror(
+        self,
+        url: str,
+        destination: Path,
+        on_progress: ProgressCallback | None = None,
+    ) -> None:
+        args = ["clone", "--mirror"]
+        args.append("--progress" if on_progress else "--quiet")
+        args.extend([url, str(destination)])
+        if on_progress:
+            self._stream(args, on_progress)
+        else:
+            self._run(args)
+
+    def fetch(self, bare: Path, on_progress: ProgressCallback | None = None) -> None:
+        args = ["--git-dir", str(bare), "fetch", "--prune"]
+        args.append("--progress" if on_progress else "--quiet")
+        args.append("origin")
+        if on_progress:
+            self._stream(args, on_progress)
+        else:
+            self._run(args)
 
     def remote_default_branch(self, url: str) -> str | None:
         result = self._run(["ls-remote", "--symref", url, "HEAD"])
