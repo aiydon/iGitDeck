@@ -49,6 +49,7 @@
   align-items: center;
   gap: 11px;
   padding: 10px 12px;
+  white-space: nowrap;
   border-radius: 10px;
   color: var(--sidebar-muted);
   font-size: 13.5px;
@@ -153,6 +154,11 @@
   .nav-link {
     padding: 7px 10px;
     font-size: 12.5px;
+    gap: 7px;
+  }
+
+  .nav-count {
+    display: none;
   }
 
   .nav-link.active {

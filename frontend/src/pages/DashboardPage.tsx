@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 
 import { api } from "../api/client";
 import { PlatformBadge, StatusBadge, SyncStatusBadge } from "../components/Badges";
+import { ActivityHeatmap } from "../components/repo/ActivityHeatmap";
 import { EmptyState } from "../components/EmptyState";
 import { EChart } from "../components/EChart";
 import {
@@ -152,6 +153,19 @@ export function DashboardPage() {
             </div>
           </section>
 
+          <section className="panel activity-panel global-activity">
+            <div className="panel-head">
+              <div>
+                <h2>提交活跃度</h2>
+                <p>近一年，所有镜像仓库的默认分支</p>
+              </div>
+            </div>
+            <ActivityHeatmap
+              activity={data.activity ?? []}
+              ariaLabel="所有镜像仓库的每日提交活跃度"
+            />
+          </section>
+
           <div className="dashboard-grid">
             <section className="panel language-panel">
               <div className="panel-head">
@@ -210,6 +224,9 @@ export function DashboardPage() {
                 <div>
                   <h2>最近同步</h2>
                 </div>
+                <Link className="text-link" to="/sync">
+                  全部记录
+                </Link>
               </div>
               {data.recent_syncs.length === 0 ? (
                 <EmptyState

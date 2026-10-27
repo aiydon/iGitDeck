@@ -1,6 +1,6 @@
 import type { EChartsOption } from "echarts";
 
-import type { LanguageSlice, TrendPoint } from "../api/client";
+import type { LanguageSlice, MonthChurn, TrendPoint } from "../api/client";
 import { compactNumber, formatChartDate, formatNumber } from "./format";
 import { languageColor } from "./languageColor";
 
@@ -114,6 +114,56 @@ export function trendChartOption(points: TrendPoint[]): EChartsOption {
         lineStyle: { color: "#4f9a6f", width: 2 },
         itemStyle: { color: "#4f9a6f" },
         areaStyle: { color: "rgba(79,154,111,0.12)" },
+      },
+    ],
+  };
+}
+
+
+export function churnChartOption(churn: MonthChurn[]): EChartsOption {
+  return {
+    backgroundColor: "transparent",
+    grid: { left: 48, right: 20, top: 30, bottom: 36 },
+    tooltip: {
+      trigger: "axis",
+      ...TOOLTIP_STYLE,
+      axisPointer: { type: "shadow" },
+    },
+    xAxis: {
+      type: "category",
+      data: churn.map((entry) => entry.month.slice(2).replace("-", "/")),
+      axisLine: { lineStyle: { color: "rgba(128,136,124,0.24)" } },
+      axisTick: { show: false },
+      axisLabel: { color: "#8b9288", fontSize: 10, hideOverlap: true },
+    },
+    yAxis: {
+      type: "value",
+      minInterval: 1,
+      axisLine: { show: false },
+      axisTick: { show: false },
+      axisLabel: {
+        color: "#8b9288",
+        fontSize: 10,
+        formatter: (value: number | string) => compactNumber(Number(value)),
+      },
+      splitLine: { lineStyle: { color: "rgba(128,136,124,0.16)" } },
+    },
+    series: [
+      {
+        name: "新增",
+        type: "bar",
+        stack: "churn",
+        data: churn.map((entry) => entry.added),
+        itemStyle: { color: "#4f9a6f", borderRadius: [3, 3, 0, 0] },
+        barMaxWidth: 22,
+      },
+      {
+        name: "删除",
+        type: "bar",
+        stack: "churn",
+        data: churn.map((entry) => -entry.deleted),
+        itemStyle: { color: "#b34a42", borderRadius: [0, 0, 3, 3] },
+        barMaxWidth: 22,
       },
     ],
   };

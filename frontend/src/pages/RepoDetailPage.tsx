@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import { api } from "../api/client";
 import { PlatformBadge, SourceBadge, StatusBadge } from "../components/Badges";
@@ -23,12 +23,14 @@ import {
 } from "../components/icons";
 import { Notice } from "../components/Notice";
 import type { NoticeTone } from "../components/Notice";
+import { ActivityHeatmap } from "../components/repo/ActivityHeatmap";
+import { ContributorList } from "../components/repo/ContributorList";
 import { LanguagePanel } from "../components/repo/LanguagePanel";
 import { MetaPanel } from "../components/repo/MetaPanel";
 import { SyncHistoryPanel } from "../components/repo/SyncHistoryPanel";
 import { Spinner } from "../components/Spinner";
 import { StatCard } from "../components/StatCard";
-import { trendChartOption } from "../lib/charts";
+import { churnChartOption, trendChartOption } from "../lib/charts";
 import { copyText } from "../lib/clipboard";
 import {
   compactNumber,
@@ -41,9 +43,23 @@ import {
 import { useLiveRefresh, useRequest } from "../lib/hooks";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
 
+const TABS = ["overview", "readme", "trend", "sync"] as const;
+type Tab = (typeof TABS)[number];
+
+const TAB_LABELS: Record<Tab, string> = {
+  overview: "概览",
+  readme: "README",
+  trend: "趋势",
+  sync: "同步",
+};
+
 interface NoticeState {
   tone: NoticeTone;
   message: string;
+}
+
+function readTab(value: string | null): Tab {
+  return TABS.includes(value as Tab) ? (value as Tab) : "overview";
 }
 
 export function RepoDetailPage() {
@@ -51,6 +67,8 @@ export function RepoDetailPage() {
   const repoId = Number(params.repoId);
   const valid = Number.isInteger(repoId) && repoId > 0;
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tab = readTab(searchParams.get("tab"));
 
   const { data, loading, error, refresh } = useRequest(
     () => (valid ? api.getRepo(repoId) : Promise.reject(new Error("仓库不存在"))),
@@ -66,15 +84,25 @@ export function RepoDetailPage() {
   useDocumentTitle(data ? `${data.repo.full_name} · iGitDeck` : null);
   useLiveRefresh(data?.repo.status === "syncing", refresh, { fastIntervalMs: 3000 });
 
-  const trendOption = useMemo(
-    () => trendChartOption(data?.trend ?? []),
-    [data?.trend],
-  );
+  const trendOption = useMemo(() => trendChartOption(data?.trend ?? []), [data?.trend]);
+  const churnOption = useMemo(() => churnChartOption(data?.churn ?? []), [data?.churn]);
 
   const cloneCommand =
     data && typeof window !== "undefined"
       ? `git clone ${window.location.origin}${data.repo.clone_path}`
       : "";
+
+  function changeTab(next: Tab) {
+    setSearchParams(
+      (current) => {
+        const updated = new URLSearchParams(current);
+        if (next === "overview") updated.delete("tab");
+        else updated.set("tab", next);
+        return updated;
+      },
+      { replace: true },
+    );
+  }
 
   if (!valid) {
     return (
@@ -129,6 +157,9 @@ export function RepoDetailPage() {
   if (!data) return null;
 
   const { repo, readme, trend, sync_runs } = data;
+  const activity = data.activity ?? [];
+  const churn = data.churn ?? [];
+  const contributors = data.contributors ?? [];
   const stats = repo.stats;
   const languages = stats?.languages ?? [];
 
@@ -250,44 +281,67 @@ export function RepoDetailPage() {
         </button>
       </div>
 
-      <section className="stat-grid">
-        <StatCard
-          label="代码行"
-          value={stats ? compactNumber(stats.code_lines) : "—"}
-          detail={stats ? `${formatNumber(stats.code_lines)} 行代码` : "等待首次同步"}
-          icon={<CodeIcon size={19} />}
-          tone="accent"
-        />
-        <StatCard
-          label="注释 / 空行"
-          value={
-            stats
-              ? `${compactNumber(stats.comment_lines)} / ${compactNumber(stats.blank_lines)}`
-              : "—"
-          }
-          detail={stats ? "scc 统计口径" : "等待首次同步"}
-          icon={<SparkIcon size={19} />}
-        />
-        <StatCard
-          label="文件"
-          value={stats ? compactNumber(stats.file_count) : "—"}
-          detail={stats ? `${languages.length} 种语言` : "等待首次同步"}
-          icon={<FileIcon size={19} />}
-        />
-        <StatCard
-          label="磁盘占用"
-          value={stats ? formatBytes(stats.disk_bytes) : "—"}
-          detail="镜像 + 工作区"
-          icon={<DiskIcon size={19} />}
-        />
-      </section>
+      <nav className="tabs" role="tablist" aria-label="仓库视图">
+        {TABS.map((value) => (
+          <button
+            key={value}
+            type="button"
+            role="tab"
+            aria-selected={tab === value}
+            className={`tab${tab === value ? " active" : ""}`}
+            onClick={() => changeTab(value)}
+          >
+            {TAB_LABELS[value]}
+          </button>
+        ))}
+      </nav>
 
-      <div className="detail-grid">
+      {tab === "overview" && (
+        <>
+          <section className="stat-grid">
+            <StatCard
+              label="代码行"
+              value={stats ? compactNumber(stats.code_lines) : "—"}
+              detail={stats ? `${formatNumber(stats.code_lines)} 行代码` : "等待首次同步"}
+              icon={<CodeIcon size={19} />}
+              tone="accent"
+            />
+            <StatCard
+              label="注释 / 空行"
+              value={
+                stats
+                  ? `${compactNumber(stats.comment_lines)} / ${compactNumber(stats.blank_lines)}`
+                  : "—"
+              }
+              detail={stats ? "scc 统计口径" : "等待首次同步"}
+              icon={<SparkIcon size={19} />}
+            />
+            <StatCard
+              label="文件"
+              value={stats ? compactNumber(stats.file_count) : "—"}
+              detail={stats ? `${languages.length} 种语言` : "等待首次同步"}
+              icon={<FileIcon size={19} />}
+            />
+            <StatCard
+              label="磁盘占用"
+              value={stats ? formatBytes(stats.disk_bytes) : "—"}
+              detail="镜像 + 工作区"
+              icon={<DiskIcon size={19} />}
+            />
+          </section>
+
+          <div className="detail-grid">
+            <LanguagePanel stats={stats} />
+            <MetaPanel repo={repo} />
+          </div>
+        </>
+      )}
+
+      {tab === "readme" && (
         <section className="panel readme-panel">
           <div className="panel-head">
             <div>
-              <h2>README</h2>
-              <p>{readme?.path ?? "未发现 README"}</p>
+              <h2>{readme?.path ?? "未找到 README"}</h2>
             </div>
             {readme && (
               <a
@@ -315,42 +369,75 @@ export function RepoDetailPage() {
             />
           )}
         </section>
+      )}
 
-        <aside className="detail-aside">
-          <LanguagePanel stats={stats} />
-          <MetaPanel repo={repo} />
-        </aside>
-      </div>
-
-      <section className="panel trend-panel">
-        <div className="panel-head">
-          <div>
-            <h2>行数趋势</h2>
-            <p>
-              {trend.length > 0
-                ? `${repo.default_branch ?? "main"} 分支 git 历史 · ${
-                    trend.length
-                  } 个提交 · 最新 ${formatNumber(trend[trend.length - 1]?.lines ?? 0)} 行`
-                : "同步完成后按默认分支提交历史生成。"}
-            </p>
-          </div>
-          <span className="panel-badge">
-            <ClockIcon size={14} />
-            {repo.last_commit_at ? relativeTime(repo.last_commit_at) : "尚无提交"}
-          </span>
-        </div>
-        {trend.length === 0 ? (
-          <EmptyState
-            title="暂无趋势数据"
-            description="成功同步后按默认分支的提交历史生成趋势。"
-            icon={<SparkIcon size={28} />}
-          />
+      {tab === "trend" &&
+        (trend.length === 0 && activity.length === 0 ? (
+          <section className="panel">
+            <EmptyState
+              title="暂无趋势数据"
+              description="成功同步后按默认分支的提交历史生成。"
+              icon={<SparkIcon size={28} />}
+            />
+          </section>
         ) : (
-          <EChart option={trendOption} height={280} ariaLabel="默认分支行数趋势图" />
-        )}
-      </section>
+          <>
+            {trend.length > 0 && (
+              <section className="panel trend-panel">
+                <div className="panel-head">
+                  <div>
+                    <h2>行数趋势</h2>
+                    <p>
+                      {repo.default_branch ?? "main"} 分支 git 历史 · {trend.length} 个提交 ·
+                      最新 {formatNumber(trend[trend.length - 1]?.lines ?? 0)} 行
+                    </p>
+                  </div>
+                  <span className="panel-badge">
+                    <ClockIcon size={14} />
+                    {repo.last_commit_at ? relativeTime(repo.last_commit_at) : "尚无提交"}
+                  </span>
+                </div>
+                <EChart option={trendOption} height={280} ariaLabel="默认分支行数趋势图" />
+              </section>
+            )}
 
-      <SyncHistoryPanel runs={sync_runs} />
+            <section className="panel activity-panel global-activity">
+              <div className="panel-head">
+                <div>
+                  <h2>提交活跃度</h2>
+                  <p>近 52 周，按日聚合</p>
+                </div>
+              </div>
+              <ActivityHeatmap activity={activity} ariaLabel="仓库每日提交活跃度" />
+            </section>
+
+            <div className={`insight-grid${churn.length === 0 ? " single" : ""}`}>
+              {churn.length > 0 && (
+                <section className="panel">
+                  <div className="panel-head">
+                    <div>
+                      <h2>代码增删</h2>
+                      <p>近 12 个月，git 跟踪行</p>
+                    </div>
+                  </div>
+                  <EChart option={churnOption} height={250} ariaLabel="每月新增与删除行数" />
+                </section>
+              )}
+
+              <section className="panel contributors-panel">
+                <div className="panel-head">
+                  <div>
+                    <h2>主要贡献者</h2>
+                    <p>按提交数</p>
+                  </div>
+                </div>
+                <ContributorList contributors={contributors} />
+              </section>
+            </div>
+          </>
+        ))}
+
+      {tab === "sync" && <SyncHistoryPanel runs={sync_runs} />}
 
       {deleteOpen && (
         <ConfirmDialog

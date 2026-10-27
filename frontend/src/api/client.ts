@@ -16,6 +16,11 @@ export type SyncQueuedResult = components["schemas"]["SyncQueuedResult"];
 export type SyncRunStatus = components["schemas"]["SyncRunStatus"];
 export type SyncTrigger = components["schemas"]["SyncTrigger"];
 export type SyncRunView = components["schemas"]["SyncRunView"];
+export type SyncRunPage = components["schemas"]["SyncRunPage"];
+export type SystemStatus = components["schemas"]["SystemStatus"];
+export type DayActivity = components["schemas"]["DayActivity"];
+export type MonthChurn = components["schemas"]["MonthChurn"];
+export type Contributor = components["schemas"]["Contributor"];
 export type TrendPoint = components["schemas"]["TrendPoint"];
 export type ReadmeView = components["schemas"]["ReadmeView"];
 export type Overview = components["schemas"]["Overview"];
@@ -26,6 +31,10 @@ export type LanguageSlice = components["schemas"]["LanguageSlice"];
 
 export type RepoListParams = NonNullable<
   operations["list_repos_api_repos_get"]["parameters"]["query"]
+>;
+
+export type SyncListParams = NonNullable<
+  operations["list_sync_runs_api_syncs_get"]["parameters"]["query"]
 >;
 
 export class ApiError extends Error {
@@ -71,7 +80,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return (await response.json()) as T;
 }
 
-function toQuery(params: RepoListParams): string {
+function toQuery(params: Record<string, string | number | undefined | null>): string {
   const query = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
     if (value === undefined || value === null || value === "") continue;
@@ -91,6 +100,8 @@ export const api = {
       body: JSON.stringify({ url }),
     }),
   getRepo: (repoId: number) => request<RepoDetail>(`/api/repos/${repoId}`),
+  status: () => request<SystemStatus>("/api/status"),
+  listSyncs: (params: SyncListParams) => request<SyncRunPage>(`/api/syncs${toQuery(params)}`),
   syncRepo: (repoId: number) =>
     request<SyncQueuedResult>(`/api/repos/${repoId}/sync`, { method: "POST" }),
   deleteRepo: (repoId: number) =>
