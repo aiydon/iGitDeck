@@ -40,7 +40,9 @@ make run       # uvicorn，监听 .env 中的 IGD_HOST:IGD_PORT
 - **检索**：SQLite FTS5 索引仓库名、owner、描述和 README 纯文本。
 - **README 预览**：Markdown 渲染、相对链接与图片重写、后端 HTML 清洗、raw 文件按仓库内路径安全读取。
 - **只读 clone**：`git http-backend` 暴露 smart HTTP，`upload-pack` 有并发上限和超时。
-- **看板**：全局总览、状态分布、语言分布、仓库筛选/排序/分页、详情统计卡片、ECharts 代码量趋势、同步历史。
+- **看板**：全局总览、状态分布、语言分布、仓库筛选/排序/分页；详情分“概览 / README / 趋势 / 同步”四个 tab。
+- **git 洞察**：默认分支行数趋势、52 周提交活跃度热力图、12 个月代码增删、主要贡献者。
+- **同步运维**：独立同步页（全部运行记录、状态筛选、失败重试），侧栏实时展示同步中 / 失败 / 待同步数量。
 - **工程化**：前后端分离，前端 TypeScript 类型由后端 OpenAPI 生成；所有 SQL 集中在 repository 层；配置只来自 `.env`。
 
 ## 使用
@@ -161,8 +163,8 @@ src/igitdeck/
   openapi.py             # 导出前端类型契约
 frontend/
   src/api/schema.d.ts    # 由 `make types` 从 OpenAPI 生成（不手写）
-  src/pages/             # 仪表盘 / 仓库列表 / 仓库详情（仅做编排）
-  src/components/        # 通用组件；repo/ 下为仓库列表与详情面板
+  src/pages/             # 仪表盘 / 仓库列表 / 仓库详情 / 同步记录（仅做编排）
+  src/components/        # 通用组件；repo/ 下为筛选、表格、热力图、贡献者与详情面板
   src/lib/               # 查询状态、图表配置、格式化、Hooks
   src/styles/            # tokens / base / layout / components / pages
 tests/                   # 单元 + API + 真实 git HTTP clone 集成测试
@@ -190,7 +192,7 @@ data/
 |---|---|
 | `repos` | 仓库身份、状态、描述、README 索引文本、分支、最后同步/提交、失败次数 |
 | `repo_snapshots` | 每个仓库仅保留当前提交的代码/注释/空行/文件数/磁盘/语言占比 |
-| `repo_trends` | 默认分支的 git 行数历史（按提交聚合，最多 120 个绘图点） |
+| `repo_trends` | 默认分支 git 洞察：行数历史（最多 120 点）、52 周活跃度、12 月增删、Top 5 贡献者 |
 | `sync_runs` | 最近 50 次同步的开始/结束、触发方式、成功失败、commit、消息 |
 | `repos_fts` | FTS5 external-content 表，触发器同步 owner/name/描述/README |
 
@@ -230,8 +232,10 @@ data/
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| `GET` | `/api/overview` | 仪表盘聚合 |
+| `GET` | `/api/overview` | 仪表盘聚合（含全局提交活跃度） |
 | `GET` | `/api/filters` | 平台/语言/状态/来源 facets |
+| `GET` | `/api/status` | 仓库总数与同步中/失败/待同步数量 |
+| `GET` | `/api/syncs` | 全局同步记录（按状态筛选、分页） |
 | `GET` | `/api/repos` | 列表、FTS 搜索、筛选、排序、分页 |
 | `POST` | `/api/repos` | 添加仓库（`url`, 可选 `source`, `description`） |
 | `GET` | `/api/repos/{id}` | 详情：最新统计、README、趋势、同步历史 |
@@ -282,7 +286,8 @@ make hooks       # 安装可选 commit-msg hook
 - **SQLite 足够**：单进程写、WAL 并发读，避免引入额外组件；repository 层集中 SQL。
 - **派生值不落库**：总代码量、语言百分比、状态计数和筛选 facets 均从最新快照实时聚合；只有昂贵的统计快照与同步日志持久化。
 - **git 是趋势的事实来源**：`repo_trends` 由默认分支的 `git log --numstat` 生成，不随同步频率漂移；`repo_snapshots` 只保留当前提交的一份统计，趋势不再依赖快照历史。
-- **按需补算**：升级或首次访问时，若当前提交尚无趋势，详情请求在线程池中按镜像生成本地趋势并落库；之后的请求直接读取。
+- **按需补算**：升级或首次访问时，若当前提交尚无趋势（或旧版本只存了行数趋势），详情请求在线程池中按镜像补齐并落库；之后的请求直接读取。
+- **导航按任务分组**：仪表盘 / 仓库 / 同步三个入口；仓库与同步带计数徽标，侧栏底部显示同步队列状态并可直接跳到失败或待同步列表。
 - **更新时间只看提交**：列表与详情以 git 最后一次提交作为“更新”时间；本地同步时间单独标注为“本地镜像”。
 - **提交级一致性**：`repos.commit_sha` 记录已镜像的提交，统计快照与趋势仅在 commit 匹配时展示；同步记录按仓库保留最近 50 条。
 - **scc 单一事实来源**：语言名称与 `CodePercent` 直接来自 scc v4 JSON；前后端不维护第二套语言归一化。
@@ -298,7 +303,8 @@ make hooks       # 安装可选 commit-msg hook
 - GitLab 子组仓库（路径超过 `group/repo` 两段）暂不支持。
 - README 仅支持 Markdown 渲染；`.rst` / `.txt` 以纯文本显示。外部图片依赖出网访问。
 - scc 解析按 v4 JSON 输出编写；如需其他版本，请设置 `IGD_SCC_BINARY` 并确认输出字段。
-- 行数趋势统计的是 git 跟踪的文本行（含文档、配置），不等于 scc 代码行；提交数超过 2 万的历史会跳过趋势，避免拖慢同步。
+- 行数趋势统计的是 git 跟踪的文本行（含文档、配置），不等于 scc 代码行；提交数超过 2 万的历史会跳过 git 洞察，避免拖慢同步。
+- 提交活跃度统计全部提交（含 merge）；行数趋势与增删按非 merge 提交的 diff 计算，末点以镜像 HEAD 补齐。
 - 超大仓库（GB 级）clone 可达数十分钟，期间列表页处于“同步中”，属预期；超过最长同步时间会被判定失败并按退避重试。
 - 可选功能（提交热力图、Top contributors、文件树、语法高亮、License 检测、RSS 等）未实现。
 
