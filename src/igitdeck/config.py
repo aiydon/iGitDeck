@@ -41,12 +41,12 @@ class Settings(BaseModel):
     sync_batch_size: int = Field(32, ge=1, le=1000)
 
     # Git and code statistics
-    git_timeout_seconds: int = Field(900, ge=10)
+    git_timeout_seconds: int = Field(1800, ge=10)
     git_http_concurrency: int = Field(4, ge=1, le=64)
-    git_http_timeout_seconds: int = Field(900, ge=10)
+    git_http_timeout_seconds: int = Field(1800, ge=10)
     git_http_max_request_bytes: int = Field(8 * 1024 * 1024, ge=1024)
     scc_binary: str = "scc"
-    scc_timeout_seconds: int = Field(300, ge=10)
+    scc_timeout_seconds: int = Field(600, ge=10)
 
     # Metadata and README
     fetch_metadata: bool = True
