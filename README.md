@@ -43,6 +43,7 @@ make run       # uvicorn，监听 .env 中的 IGD_HOST:IGD_PORT
 - **看板**：全局总览、状态分布、语言分布、仓库筛选/排序/分页；详情分“概览 / README / 趋势 / 同步”四个 tab。
 - **git 洞察**：默认分支行数趋势、52 周提交活跃度热力图、12 个月代码增删、主要贡献者。
 - **同步运维**：独立同步页（全部运行记录、状态筛选、失败重试），侧栏实时展示同步中 / 失败 / 待同步数量。
+- **实时进度**：克隆/抓取期间按 git 自身进度显示百分比（压缩、接收、解析增量），随后是工作区与统计阶段；进度只存内存，任务结束即清除。
 - **工程化**：前后端分离，前端 TypeScript 类型由后端 OpenAPI 生成；所有 SQL 集中在 repository 层；配置只来自 `.env`。
 
 ## 使用
@@ -156,11 +157,14 @@ src/igitdeck/
     files.py             # raw 文件安全解析
     git_http.py          # git http-backend 流式响应
     metadata.py          # 可选 GitHub 描述补全
+    progress.py          # 内存中的同步进度（不落库）
+    trends.py            # 从 git 提交历史重建行数/活跃度/增删/贡献者
     container.py         # 显式依赖装配
   api/                   # FastAPI 路由与错误映射
   crawler/               # GitHub Trending 解析 + HTTP 提交
   main.py                # app factory / lifespan / SPA
   openapi.py             # 导出前端类型契约
+  maintenance.py         # 运维 CLI（仓库删除），不暴露 HTTP
 frontend/
   src/api/schema.d.ts    # 由 `make types` 从 OpenAPI 生成（不手写）
   src/pages/             # 仪表盘 / 仓库列表 / 仓库详情 / 同步记录（仅做编排）
@@ -194,6 +198,8 @@ data/
 | `repo_snapshots` | 每个仓库仅保留当前提交的代码/注释/空行/文件数/磁盘/语言占比 |
 | `repo_trends` | 默认分支 git 洞察：行数历史（最多 120 点）、52 周活跃度、12 月增删、Top 5 贡献者 |
 | `sync_runs` | 最近 50 次同步的开始/结束、触发方式、成功失败、commit、消息 |
+
+同步进度不落库：它是任务运行中的瞬时状态，进程重启后由下一次同步重新建立。
 | `repos_fts` | FTS5 external-content 表，触发器同步 owner/name/描述/README |
 
 ### Web 进程
@@ -240,10 +246,17 @@ data/
 | `POST` | `/api/repos` | 添加仓库（`url`, 可选 `source`, `description`） |
 | `GET` | `/api/repos/{id}` | 详情：最新统计、README、趋势、同步历史 |
 | `POST` | `/api/repos/{id}/sync` | 手动同步（202，重复触发返回 `queued=false`） |
-| `DELETE` | `/api/repos/{id}` | 删除数据库记录与磁盘镜像 |
 | `GET` | `/api/repos/{id}/raw/{path}` | 工作区内 raw 文件（README 图片/链接） |
 | `GET` | `/api/health` | 健康检查 |
 | `GET/POST` | `/git/{platform}/{owner}/{repo}/info/refs`、`/git-upload-pack` | 只读 smart HTTP |
+
+仓库删除**不提供 HTTP 接口**（内网无鉴权，任何访问者都能触发），只能由运维在主机上执行：
+
+```bash
+make repo-remove REPO_ID=12          # 删除数据库记录、镜像与工作区
+make repo-remove REPO_ID=12 FORCE=1  # 正在同步时强制删除
+uv run python -m igitdeck.maintenance remove 12
+```
 
 完整契约由 FastAPI 生成：`/docs`、`/openapi.json`。前端类型通过
 
@@ -282,7 +295,7 @@ make hooks       # 安装可选 commit-msg hook
 
 ## 设计取舍
 
-- **内网信任模型**：不做用户、权限、token、限流；只读 clone 仍限制为 `upload-pack`。
+- **内网信任模型**：不做用户、权限、token、限流；只读 clone 仍限制为 `upload-pack`。破坏性操作（删除仓库）只保留运维 CLI，不出现在 Web UI 与 API。
 - **SQLite 足够**：单进程写、WAL 并发读，避免引入额外组件；repository 层集中 SQL。
 - **派生值不落库**：总代码量、语言百分比、状态计数和筛选 facets 均从最新快照实时聚合；只有昂贵的统计快照与同步日志持久化。
 - **git 是趋势的事实来源**：`repo_trends` 由默认分支的 `git log --numstat` 生成，不随同步频率漂移；`repo_snapshots` 只保留当前提交的一份统计，趋势不再依赖快照历史。
