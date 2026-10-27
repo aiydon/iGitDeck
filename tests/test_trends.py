@@ -1,23 +1,36 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 import pytest
 
 from igitdeck.clock import to_epoch
 from igitdeck.git import CommitLineDelta, GitClient
-from igitdeck.models.repo import Platform, RepoIdentity, RepoSource, TrendPoint
+from igitdeck.models.repo import (
+    DayActivity,
+    Platform,
+    RepoIdentity,
+    RepoSource,
+    TrendPoint,
+)
 from igitdeck.repositories.trends import TrendRepository
 from igitdeck.services.container import Container
-from igitdeck.services.trends import TrendService, build_line_trend
+from igitdeck.services.trends import (
+    TrendService,
+    build_contributors,
+    build_daily_activity,
+    build_line_trend,
+    build_month_churn,
+)
 
 
 def make_delta(sha: str, minute: int, net: int) -> CommitLineDelta:
     return CommitLineDelta(
         commit_sha=sha,
         committed_at=to_epoch(datetime(2026, 1, 1, tzinfo=UTC) + timedelta(minutes=minute)),
-        net_lines=net,
+        added=max(net, 0),
+        deleted=max(-net, 0),
     )
 
 
@@ -87,10 +100,11 @@ def test_trend_service_only_serves_the_mirrored_commit(container: Container) -> 
     repository.save(record.id, commit_sha="a" * 40, points=points)
 
     service = TrendService(container.sync.git, repository)
-    assert service.points(record.id, "a" * 40) == points
-    assert service.points(record.id, "b" * 40) == []
-    assert service.points(record.id, None) == []
-    assert service.points(999, "a" * 40) == []
+    stored = service.record(record.id, "a" * 40)
+    assert stored is not None and stored.points == points
+    assert service.record(record.id, "b" * 40) is None
+    assert service.record(record.id, None) is None
+    assert service.record(999, "a" * 40) is None
 
 
 def test_trend_service_appends_merge_tip(container: Container, tmp_path: Path, git) -> None:
@@ -173,5 +187,103 @@ def test_trend_service_marks_oversized_history_as_covered(
     service.refresh(record.id, bare=Path("/tmp"), branch="main", commit_sha="a" * 40)
 
     assert service.covered(record.id, "a" * 40)
-    assert service.points(record.id, "a" * 40) == []
+    stored = service.record(record.id, "a" * 40)
+    assert stored is not None and stored.points == []
     assert not service.covered(record.id, "b" * 40)
+
+
+def test_build_daily_activity_counts_days_ending_on_the_newest_week() -> None:
+    base = to_epoch(datetime(2026, 10, 7, tzinfo=UTC))  # Wednesday
+    timestamps = [base, base + 86_400, base - 7 * 86_400, base - 14 * 86_400]
+
+    days = build_daily_activity(timestamps, weeks=4)
+
+    assert len(days) == 28
+    assert days[0].day == date(2026, 9, 14)
+    assert days[-1].day == date(2026, 10, 11)
+    by_day = {entry.day: entry.commits for entry in days}
+    assert by_day[date(2026, 10, 7)] == 1
+    assert by_day[date(2026, 10, 8)] == 1
+    assert by_day[date(2026, 9, 30)] == 1
+    assert by_day[date(2026, 9, 23)] == 1
+    assert days[0].commits == 0
+
+
+def test_build_month_churn_buckets_added_and_deleted() -> None:
+    deltas = [
+        CommitLineDelta(
+            commit_sha="a",
+            committed_at=to_epoch(datetime(2026, 10, 2, tzinfo=UTC)),
+            added=10,
+            deleted=3,
+        ),
+        CommitLineDelta(
+            commit_sha="b",
+            committed_at=to_epoch(datetime(2026, 9, 20, tzinfo=UTC)),
+            added=4,
+            deleted=0,
+        ),
+        CommitLineDelta(
+            commit_sha="c",
+            committed_at=to_epoch(datetime(2025, 1, 1, tzinfo=UTC)),
+            added=99,
+            deleted=99,
+        ),
+    ]
+
+    churn = build_month_churn(deltas, months=3)
+
+    assert [bucket.month for bucket in churn] == ["2026-08", "2026-09", "2026-10"]
+    assert churn[-1].added == 10
+    assert churn[-1].deleted == 3
+    assert churn[-2].added == 4
+    assert churn[-3].added == 0
+
+    anchored = build_month_churn(
+        deltas,
+        months=3,
+        anchor_timestamp=to_epoch(datetime(2026, 11, 1, tzinfo=UTC)),
+    )
+    assert [bucket.month for bucket in anchored] == ["2026-09", "2026-10", "2026-11"]
+    assert anchored[-1].added == 0
+    assert anchored[-2].added == 10
+
+
+def test_build_contributors_ranks_and_limits() -> None:
+    contributors = build_contributors(["a", "b", "a", "a", "c", "b"], limit=2)
+    assert [(item.name, item.commits) for item in contributors] == [("a", 3), ("b", 2)]
+
+
+def test_dashboard_aggregates_weekly_activity(container: Container) -> None:
+    record = container.repos.add(
+        RepoIdentity(
+            platform=Platform.GITHUB,
+            owner="local",
+            name="activity",
+            url="https://github.com/local/activity.git",
+        ),
+        source=RepoSource.MANUAL,
+        description=None,
+        added_at=datetime.now(UTC),
+    )
+    container.repos.mark_success(
+        record.id,
+        synced_at=datetime.now(UTC),
+        default_branch="main",
+        commit_sha="a" * 40,
+        last_commit_at=datetime.now(UTC),
+        readme_path=None,
+        readme_text=None,
+        description=None,
+    )
+    today = datetime.now(UTC).date()
+    TrendRepository(container.db).save(
+        record.id,
+        commit_sha="a" * 40,
+        points=[],
+        activity=[DayActivity(day=today, commits=4)],
+    )
+
+    overview = container.dashboard.overview()
+    assert sum(entry.commits for entry in overview.activity) == 4
+    assert overview.activity[-1].day.weekday() == 6

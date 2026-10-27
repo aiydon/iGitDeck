@@ -6,7 +6,7 @@ import os
 import subprocess
 from pathlib import Path
 
-from pydantic import BaseModel
+from pydantic import BaseModel, computed_field
 
 
 class GitCommandError(RuntimeError):
@@ -20,11 +20,22 @@ class GitResult(BaseModel):
 
 
 class CommitLineDelta(BaseModel):
-    """Net tracked-line change introduced by one non-merge commit."""
+    """Tracked-line change introduced by one non-merge commit."""
 
     commit_sha: str
     committed_at: int
-    net_lines: int
+    added: int
+    deleted: int
+
+    @computed_field
+    @property
+    def net_lines(self) -> int:
+        return self.added - self.deleted
+
+
+class CommitAuthor(BaseModel):
+    committed_at: int
+    author: str
 
 
 class GitClient:
@@ -139,7 +150,8 @@ class GitClient:
         )
         shas: list[str] = []
         timestamps: list[int] = []
-        nets: list[int] = []
+        added: list[int] = []
+        deleted: list[int] = []
         for line in result.stdout.splitlines():
             if line.startswith("@@"):
                 fields = line[2:].split()
@@ -147,14 +159,44 @@ class GitClient:
                     continue
                 shas.append(fields[0])
                 timestamps.append(int(fields[1]))
-                nets.append(0)
-            elif nets:
+                added.append(0)
+                deleted.append(0)
+            elif added:
                 fields = line.split("\t")
                 if len(fields) < 2 or not fields[0].isdigit() or not fields[1].isdigit():
                     continue
-                nets[-1] += int(fields[0]) - int(fields[1])
+                added[-1] += int(fields[0])
+                deleted[-1] += int(fields[1])
 
         return [
-            CommitLineDelta(commit_sha=sha, committed_at=timestamp, net_lines=net)
-            for sha, timestamp, net in zip(shas, timestamps, nets, strict=True)
+            CommitLineDelta(
+                commit_sha=sha,
+                committed_at=timestamp,
+                added=added_count,
+                deleted=deleted_count,
+            )
+            for sha, timestamp, added_count, deleted_count in zip(
+                shas, timestamps, added, deleted, strict=True
+            )
         ]
+
+    def commit_authors(self, bare: Path, branch: str) -> list[CommitAuthor]:
+        """Every commit's timestamp and author on `branch`, newest first."""
+        result = self._run(
+            [
+                "--git-dir",
+                str(bare),
+                "log",
+                "--format=%ct%x1f%an",
+                f"refs/heads/{branch}",
+            ]
+        )
+        authors: list[CommitAuthor] = []
+        for line in result.stdout.splitlines():
+            timestamp, separator, name = line.partition("\x1f")
+            if not separator or not timestamp.isdigit():
+                continue
+            authors.append(
+                CommitAuthor(committed_at=int(timestamp), author=name.strip() or "unknown")
+            )
+        return authors

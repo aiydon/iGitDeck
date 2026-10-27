@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Sequence
-from datetime import datetime
+from datetime import date, datetime
 from enum import StrEnum
 from urllib.parse import unquote, urlsplit
 
@@ -208,10 +208,29 @@ class TrendPoint(BaseModel):
     lines: int = Field(ge=0)
 
 
+class DayActivity(BaseModel):
+    day: date
+    commits: int = Field(ge=0)
+
+
+class MonthChurn(BaseModel):
+    month: str
+    added: int = Field(ge=0)
+    deleted: int = Field(ge=0)
+
+
+class Contributor(BaseModel):
+    name: str
+    commits: int = Field(ge=0)
+
+
 class RepoLineTrend(BaseModel):
     commit_sha: str
     generated_at: datetime
     points: list[TrendPoint]
+    activity: list[DayActivity] = Field(default_factory=list)
+    churn: list[MonthChurn] = Field(default_factory=list)
+    contributors: list[Contributor] = Field(default_factory=list)
 
 
 class ReadmeView(BaseModel):
@@ -267,6 +286,9 @@ class RepoDetail(BaseModel):
     repo: RepoSummary
     readme: ReadmeView | None
     trend: list[TrendPoint]
+    activity: list[DayActivity] = Field(default_factory=list)
+    churn: list[MonthChurn] = Field(default_factory=list)
+    contributors: list[Contributor] = Field(default_factory=list)
     sync_runs: list[SyncRunView]
 
 

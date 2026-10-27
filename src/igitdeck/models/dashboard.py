@@ -6,7 +6,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
-from igitdeck.models.repo import RepoStatus, RepoSummary
+from igitdeck.models.repo import DayActivity, RepoStatus, RepoSummary
 from igitdeck.models.sync import SyncRunView
 
 
@@ -46,6 +46,13 @@ class LanguageTotal(BaseModel):
     repos: int
 
 
+class SystemStatus(BaseModel):
+    repo_count: int
+    active: int
+    failed: int
+    pending: int
+
+
 class Overview(BaseModel):
     repo_count: int
     total_code_lines: int
@@ -53,6 +60,7 @@ class Overview(BaseModel):
     total_files: int
     statuses: list[StatusSlice]
     languages: list[LanguageSlice]
+    activity: list[DayActivity] = Field(default_factory=list)
     recent_syncs: list[SyncRunView]
     recent_repos: list[RepoSummary]
     generated_at: datetime

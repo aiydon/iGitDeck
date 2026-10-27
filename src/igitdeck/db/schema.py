@@ -5,7 +5,7 @@ Bump SCHEMA_VERSION and append the migration statements when the schema changes.
 
 from __future__ import annotations
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 # Each entry upgrades the database from the previous version to its key.
 MIGRATIONS: dict[int, tuple[str, ...]] = {
@@ -163,5 +163,10 @@ MIGRATIONS: dict[int, tuple[str, ...]] = {
             LIMIT 1
         )
         """,
+    ),
+    3: (
+        "ALTER TABLE repo_trends ADD COLUMN activity TEXT",
+        "ALTER TABLE repo_trends ADD COLUMN churn TEXT",
+        "ALTER TABLE repo_trends ADD COLUMN contributors TEXT",
     ),
 }

@@ -20,6 +20,7 @@ from igitdeck.models.repo import (
     RepoAddResult,
     RepoDetail,
     RepoIdentity,
+    RepoLineTrend,
     RepoPage,
     RepoQuery,
     RepoRecord,
@@ -27,7 +28,6 @@ from igitdeck.models.repo import (
     RepoStats,
     RepoStatus,
     RepoSummary,
-    TrendPoint,
     parse_repo_url,
 )
 from igitdeck.paths import StoragePaths
@@ -141,39 +141,44 @@ class CatalogService:
             except (RepoFileNotFound, PathOutsideRepo, OSError) as exc:
                 logger.debug("README unavailable for repo %s: %s", repo_id, exc)
 
+        insights = self._insights(record, stats)
         return RepoDetail(
             repo=RepoSummary.from_record(record, stats=stats),
             readme=readme_view,
-            trend=self._trend(record, stats),
+            trend=insights.points if insights else [],
+            activity=insights.activity if insights else [],
+            churn=insights.churn if insights else [],
+            contributors=insights.contributors if insights else [],
             sync_runs=self.runs.for_repo(record.id, SYNC_HISTORY_LIMIT),
         )
 
-    def _trend(self, record: RepoRecord, stats: RepoStats | None) -> list[TrendPoint]:
-        """Warm the trend cache on first read after an upgrade.
+    def _insights(self, record: RepoRecord, stats: RepoStats | None) -> RepoLineTrend | None:
+        """Warm git-derived series on first read after an upgrade.
 
         Runs in the request threadpool, so it never blocks the event loop and
-        only executes when the mirror exists and the stored trend is stale.
+        only executes when the mirror exists and the stored series are stale.
         """
         commit_sha = stats.commit_sha if stats else None
-        points = self.trends.points(record.id, commit_sha)
-        if (
-            points
-            or commit_sha is None
-            or record.default_branch is None
-            or self.trends.covered(record.id, commit_sha)
-        ):
-            return points
+        stored = self.trends.record(record.id, commit_sha)
+        if commit_sha is None or record.default_branch is None:
+            return stored
+        # Rows written before git insights existed only carry the line trend.
+        enriched = stored is not None and bool(
+            stored.activity or stored.churn or stored.contributors or not stored.points
+        )
+        if enriched:
+            return stored
 
         bare = self.paths.bare_repo(record.platform, record.owner, record.name)
         if not bare.is_dir():
-            return []
+            return stored
         self.trends.refresh(
             record.id,
             bare=bare,
             branch=record.default_branch,
             commit_sha=commit_sha,
         )
-        return self.trends.points(record.id, commit_sha)
+        return self.trends.record(record.id, commit_sha) or stored
 
     def filters(self) -> FilterOptions:
         platform_counts = self.repos.counts_by(FacetField.PLATFORM)

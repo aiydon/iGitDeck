@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from fastapi.testclient import TestClient
 
 from igitdeck.config import Settings
 from igitdeck.main import create_app
+from igitdeck.models.sync import SyncRunStatus, SyncTrigger
 
 
 def test_api_lifecycle(settings: Settings) -> None:
@@ -79,6 +82,38 @@ def test_api_lifecycle(settings: Settings) -> None:
         assert overview["repo_count"] == 2
         assert overview["total_code_lines"] == 0
         assert overview["languages"] == []
+        assert overview["activity"] == []
+
+        status = client.get("/api/status")
+        assert status.status_code == 200
+        assert status.json() == {
+            "repo_count": 2,
+            "active": 0,
+            "failed": 0,
+            "pending": 2,
+        }
+
+        runs = client.get("/api/syncs")
+        assert runs.status_code == 200
+        assert runs.json()["total"] == 0
+
+        container = app.state.container
+        run_id = container.sync_runs.start(
+            repo_id, trigger=SyncTrigger.MANUAL, started_at=datetime.now(UTC)
+        )
+        container.sync_runs.finish(
+            run_id,
+            status=SyncRunStatus.SUCCESS,
+            finished_at=datetime.now(UTC),
+            message="ok",
+            commit_sha="a" * 40,
+        )
+        feed = client.get("/api/syncs").json()
+        assert feed["total"] == 1
+        assert feed["items"][0]["full_name"] == "pallets/click"
+        assert feed["items"][0]["duration_seconds"] == 0
+        failed = client.get("/api/syncs", params={"status": "failed"}).json()
+        assert failed["total"] == 0
 
         missing_readme = client.get(f"/api/repos/{repo_id}/raw/README.md")
         assert missing_readme.status_code == 404

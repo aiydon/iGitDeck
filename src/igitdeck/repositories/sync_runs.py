@@ -6,7 +6,12 @@ from datetime import datetime
 
 from igitdeck.clock import from_epoch, to_epoch
 from igitdeck.db.database import Database
-from igitdeck.models.sync import SyncRunStatus, SyncRunView, SyncTrigger
+from igitdeck.models.sync import (
+    SyncQuery,
+    SyncRunStatus,
+    SyncRunView,
+    SyncTrigger,
+)
 
 MAX_RUNS_PER_REPO = 50
 
@@ -96,6 +101,29 @@ class SyncRunRepository:
                 (repo_id, limit),
             ).fetchall()
         return [_view(row) for row in rows]
+
+    def page(self, query: SyncQuery) -> tuple[list[SyncRunView], int]:
+        where_sql = ""
+        params: list[object] = []
+        if query.status is not None:
+            where_sql = "WHERE sr.status = ?"
+            params.append(query.status.value)
+
+        offset = (query.page - 1) * query.page_size
+        with self.db.connection() as connection:
+            total = connection.execute(
+                f"SELECT count(*) FROM sync_runs sr {where_sql}", params
+            ).fetchone()[0]
+            rows = connection.execute(
+                f"""
+                {_VIEW_SELECT}
+                {where_sql}
+                ORDER BY sr.id DESC
+                LIMIT ? OFFSET ?
+                """,
+                [*params, query.page_size, offset],
+            ).fetchall()
+        return [_view(row) for row in rows], total
 
     def recent(self, limit: int) -> list[SyncRunView]:
         with self.db.connection() as connection:

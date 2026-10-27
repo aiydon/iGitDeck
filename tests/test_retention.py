@@ -6,7 +6,7 @@ import pytest
 
 import igitdeck.repositories.sync_runs as sync_runs_module
 from igitdeck.models.repo import Platform, RepoIdentity, RepoSource, RepoStats
-from igitdeck.models.sync import SyncRunStatus, SyncTrigger
+from igitdeck.models.sync import SyncQuery, SyncRunStatus, SyncTrigger
 from igitdeck.services.container import Container
 
 
@@ -98,3 +98,9 @@ def test_sync_runs_are_capped_per_repository(
     runs = container.sync_runs.for_repo(record.id, 10)
     assert len(runs) == 3
     assert [run.message for run in runs] == ["run 4", "run 3", "run 2"]
+
+    page, total = container.sync_runs.page(SyncQuery(page=1, page_size=2))
+    assert total == 3
+    assert [run.message for run in page] == ["run 4", "run 3"]
+    failed, failed_total = container.sync_runs.page(SyncQuery(status=SyncRunStatus.FAILED))
+    assert (failed, failed_total) == ([], 0)

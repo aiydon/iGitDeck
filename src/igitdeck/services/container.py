@@ -122,6 +122,7 @@ def build_container(settings: Settings) -> Container:
         stats=stats,
         runs=sync_runs,
         catalog=catalog,
+        trends=trends,
     )
     git_http = GitHttpService(
         repos=repos,

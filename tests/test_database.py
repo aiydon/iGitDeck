@@ -27,6 +27,8 @@ def test_migrate_is_idempotent_and_records_version(tmp_path: Path) -> None:
         }
         assert {"repos", "repo_snapshots", "sync_runs", "repo_trends", "repos_fts"} <= tables
         assert connection.execute("PRAGMA journal_mode").fetchone()[0].lower() == "wal"
+        trend_columns = {row[1] for row in connection.execute("PRAGMA table_info(repo_trends)")}
+        assert {"activity", "churn", "contributors"} <= trend_columns
     finally:
         connection.close()
 

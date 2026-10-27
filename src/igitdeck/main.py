@@ -15,7 +15,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from igitdeck.api.errors import install_error_handlers
-from igitdeck.api.routes import dashboard, git, repos
+from igitdeck.api.routes import dashboard, git, repos, syncs
 from igitdeck.clock import utcnow
 from igitdeck.config import Settings, load_settings
 from igitdeck.services.container import build_container
@@ -77,6 +77,7 @@ def create_app(settings: Settings | None = None, *, with_logging: bool = True) -
     install_error_handlers(app)
     app.include_router(repos.router)
     app.include_router(dashboard.router)
+    app.include_router(syncs.router)
     app.include_router(git.router)
     _mount_frontend(app, resolved_settings.frontend_dist)
     return app
