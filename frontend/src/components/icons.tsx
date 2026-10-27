@@ -69,17 +69,6 @@ export function RefreshIcon(props: IconProps) {
   );
 }
 
-export function TrashIcon(props: IconProps) {
-  return (
-    <Icon {...props}>
-      <path d="M4 7h16" />
-      <path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
-      <path d="M6 7l1 13h10l1-13" />
-      <path d="M10 11v6M14 11v6" />
-    </Icon>
-  );
-}
-
 export function ExternalIcon(props: IconProps) {
   return (
     <Icon {...props}>

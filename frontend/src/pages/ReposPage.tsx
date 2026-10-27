@@ -12,7 +12,7 @@ import { RepoFilters } from "../components/repo/RepoFilters";
 import { RepoTable } from "../components/repo/RepoTable";
 import { errorMessage } from "../lib/format";
 import { useLiveRefresh, useRequest } from "../lib/hooks";
-import { readRepoQuery, toListParams, withRepoParam } from "../lib/repoQuery";
+import { readRepoQuery, toListParams, withQueryParam } from "../lib/repoQuery";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
 
 interface NoticeState {
@@ -31,7 +31,7 @@ export function ReposPage() {
 
   const updateParam = useCallback(
     (key: string, value: string | null) => {
-      setParams((current) => withRepoParam(current, key, value), { replace: true });
+      setParams((current) => withQueryParam(current, key, value), { replace: true });
     },
     [setParams],
   );
@@ -61,9 +61,11 @@ export function ReposPage() {
     refreshFacets();
   }, [refresh, refreshFacets]);
 
-  const syncing = data?.items.some((repo) => repo.status === "syncing") ?? false;
+  const syncing =
+    data?.items.some((repo) => Boolean(repo.progress) || repo.status === "syncing") ??
+    false;
   // Poll only the list; facet counts are refreshed once a sync finishes.
-  useLiveRefresh(syncing, refresh);
+  useLiveRefresh(syncing, refresh, { fastIntervalMs: 2500, slowIntervalMs: 6000 });
 
   const wasSyncing = useRef(false);
   useEffect(() => {

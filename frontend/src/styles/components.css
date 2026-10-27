@@ -57,16 +57,6 @@
   background: var(--surface-soft);
 }
 
-.button.danger {
-  background: var(--danger);
-  border-color: var(--danger);
-  color: #fff;
-}
-
-.button.danger:hover:not(:disabled) {
-  filter: brightness(0.94);
-}
-
 .button.compact {
   padding: 6px 10px;
   border-radius: 8px;
@@ -98,12 +88,6 @@
   background: var(--surface-soft);
   border-color: var(--border);
   color: var(--fg);
-}
-
-.icon-button.danger:hover {
-  background: var(--danger-soft);
-  border-color: transparent;
-  color: var(--danger);
 }
 
 /* Surfaces --------------------------------------------------------------- */
@@ -684,35 +668,6 @@
   margin-top: 22px;
 }
 
-.confirm-body {
-  display: flex;
-  align-items: flex-start;
-  gap: 13px;
-  padding: 2px 0;
-}
-
-.confirm-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 40px;
-  height: 40px;
-  flex: 0 0 auto;
-  border-radius: 10px;
-  background: var(--danger-soft);
-  color: var(--danger);
-}
-
-.confirm-text {
-  color: var(--fg-soft);
-  font-size: 13px;
-  line-height: 1.7;
-}
-
-.confirm-text strong {
-  color: var(--fg);
-}
-
 /* Toolbar ---------------------------------------------------------------- */
 .search-box {
   display: flex;
@@ -1266,3 +1221,50 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Sync progress ---------------------------------------------------------- */
+.sync-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 140px;
+}
+
+.sync-progress-track {
+  height: 5px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--surface-soft);
+}
+
+.sync-progress-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 0.45s ease;
+}
+
+.sync-progress-label {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 10.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sync-progress.compact {
+  gap: 3px;
+  min-width: 92px;
+  max-width: 132px;
+  margin-top: 5px;
+}
+
+.sync-progress.compact .sync-progress-track {
+  height: 3px;
+}
+
+.sync-progress.compact .sync-progress-label {
+  font-size: 9.5px;
+}
+

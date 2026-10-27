@@ -30,7 +30,7 @@ export interface RepoQueryState {
   filtered: boolean;
 }
 
-function readPage(raw: string | null): number {
+export function readPageParam(raw: string | null): number {
   const value = Number(raw ?? "1");
   if (!Number.isFinite(value) || value < 1) return 1;
   return Math.min(Math.floor(value), MAX_PAGE);
@@ -57,7 +57,7 @@ export function readRepoQuery(params: URLSearchParams): RepoQueryState {
     source,
     sort: isSortField(rawSort) ? rawSort : "added_at",
     order: isSortOrder(rawOrder) ? rawOrder : "desc",
-    page: readPage(params.get("page")),
+    page: readPageParam(params.get("page")),
     filtered: Boolean(q || language || platform || status || source),
   };
 }
@@ -77,7 +77,7 @@ export function toListParams(state: RepoQueryState): RepoListParams {
 }
 
 /** Set or clear one parameter, resetting pagination unless changing the page. */
-export function withRepoParam(
+export function withQueryParam(
   params: URLSearchParams,
   key: string,
   value: string | null,

@@ -16,6 +16,8 @@ export type SyncQueuedResult = components["schemas"]["SyncQueuedResult"];
 export type SyncRunStatus = components["schemas"]["SyncRunStatus"];
 export type SyncTrigger = components["schemas"]["SyncTrigger"];
 export type SyncRunView = components["schemas"]["SyncRunView"];
+export type SyncProgress = components["schemas"]["SyncProgress"];
+export type SyncPhase = components["schemas"]["SyncPhase"];
 export type SyncRunPage = components["schemas"]["SyncRunPage"];
 export type SystemStatus = components["schemas"]["SystemStatus"];
 export type DayActivity = components["schemas"]["DayActivity"];
@@ -74,9 +76,6 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
         : `请求失败（HTTP ${response.status}）`;
     throw new ApiError(message, response.status, detail);
   }
-  if (response.status === 204) {
-    return undefined as T;
-  }
   return (await response.json()) as T;
 }
 
@@ -104,6 +103,4 @@ export const api = {
   listSyncs: (params: SyncListParams) => request<SyncRunPage>(`/api/syncs${toQuery(params)}`),
   syncRepo: (repoId: number) =>
     request<SyncQueuedResult>(`/api/repos/${repoId}/sync`, { method: "POST" }),
-  deleteRepo: (repoId: number) =>
-    request<void>(`/api/repos/${repoId}`, { method: "DELETE" }),
 };

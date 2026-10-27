@@ -252,10 +252,6 @@ a.lang-legend-name:hover {
   width: 100%;
 }
 
-.list-toolbar .spinner {
-  color: var(--accent);
-}
-
 .list-empty {
   padding: 16px 0 26px;
 }

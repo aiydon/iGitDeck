@@ -1,9 +1,8 @@
 import { useMemo, useState } from "react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 
 import { api } from "../api/client";
 import { PlatformBadge, SourceBadge, StatusBadge } from "../components/Badges";
-import { ConfirmDialog } from "../components/ConfirmDialog";
 import { EChart } from "../components/EChart";
 import { EmptyState } from "../components/EmptyState";
 import {
@@ -19,7 +18,6 @@ import {
   RefreshIcon,
   SparkIcon,
   TerminalIcon,
-  TrashIcon,
 } from "../components/icons";
 import { Notice } from "../components/Notice";
 import type { NoticeTone } from "../components/Notice";
@@ -29,6 +27,7 @@ import { LanguagePanel } from "../components/repo/LanguagePanel";
 import { MetaPanel } from "../components/repo/MetaPanel";
 import { SyncHistoryPanel } from "../components/repo/SyncHistoryPanel";
 import { Spinner } from "../components/Spinner";
+import { SyncProgressBar } from "../components/SyncProgressBar";
 import { StatCard } from "../components/StatCard";
 import { churnChartOption, trendChartOption } from "../lib/charts";
 import { copyText } from "../lib/clipboard";
@@ -66,7 +65,6 @@ export function RepoDetailPage() {
   const params = useParams<{ repoId: string }>();
   const repoId = Number(params.repoId);
   const valid = Number.isInteger(repoId) && repoId > 0;
-  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const tab = readTab(searchParams.get("tab"));
 
@@ -77,12 +75,14 @@ export function RepoDetailPage() {
 
   const [notice, setNotice] = useState<NoticeState | null>(null);
   const [syncBusy, setSyncBusy] = useState(false);
-  const [deleteOpen, setDeleteOpen] = useState(false);
-  const [deleteBusy, setDeleteBusy] = useState(false);
   const [copied, setCopied] = useState(false);
 
   useDocumentTitle(data ? `${data.repo.full_name} · iGitDeck` : null);
-  useLiveRefresh(data?.repo.status === "syncing", refresh, { fastIntervalMs: 3000 });
+  useLiveRefresh(
+    Boolean(data?.repo.progress) || data?.repo.status === "syncing",
+    refresh,
+    { fastIntervalMs: 2000, slowIntervalMs: 5000 },
+  );
 
   const trendOption = useMemo(() => trendChartOption(data?.trend ?? []), [data?.trend]);
   const churnOption = useMemo(() => churnChartOption(data?.churn ?? []), [data?.churn]);
@@ -192,18 +192,6 @@ export function RepoDetailPage() {
     }
   }
 
-  async function handleDelete() {
-    setDeleteBusy(true);
-    try {
-      await api.deleteRepo(repo.id);
-      navigate("/repos", { replace: true });
-    } catch (cause) {
-      setDeleteBusy(false);
-      setDeleteOpen(false);
-      setNotice({ tone: "error", message: errorMessage(cause) });
-    }
-  }
-
   return (
     <>
       <Link className="back-link" to="/repos">
@@ -247,15 +235,6 @@ export function RepoDetailPage() {
             )}
             {repo.status === "syncing" ? "同步中" : "立即同步"}
           </button>
-          <button
-            type="button"
-            className="icon-button danger"
-            onClick={() => setDeleteOpen(true)}
-            title="删除仓库"
-            aria-label="删除仓库"
-          >
-            <TrashIcon size={18} />
-          </button>
         </div>
       </header>
 
@@ -280,6 +259,8 @@ export function RepoDetailPage() {
           {copied ? "已复制" : "复制"}
         </button>
       </div>
+
+      {repo.progress && <SyncProgressBar progress={repo.progress} />}
 
       <nav className="tabs" role="tablist" aria-label="仓库视图">
         {TABS.map((value) => (
@@ -438,22 +419,6 @@ export function RepoDetailPage() {
         ))}
 
       {tab === "sync" && <SyncHistoryPanel runs={sync_runs} />}
-
-      {deleteOpen && (
-        <ConfirmDialog
-          title="删除仓库"
-          message={
-            <>
-              将从看板中移除 <strong>{repo.full_name}</strong>，并删除本地的镜像与工作区。
-              源仓库不会受到影响。
-            </>
-          }
-          confirmLabel="确认删除"
-          busy={deleteBusy}
-          onConfirm={handleDelete}
-          onClose={() => setDeleteOpen(false)}
-        />
-      )}
     </>
   );
 }

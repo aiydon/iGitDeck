@@ -4,6 +4,7 @@ import type {
   RepoStatus,
   SortField,
   SortOrder,
+  SyncPhase,
   SyncRunStatus,
   SyncTrigger,
 } from "../api/client";
@@ -67,12 +68,21 @@ const SYNC_TRIGGER_LABELS: Record<SyncTrigger, string> = {
   scheduled: "定时",
 };
 
+const SYNC_PHASE_LABELS: Record<SyncPhase, string> = {
+  queued: "排队中",
+  cloning: "克隆镜像",
+  fetching: "抓取更新",
+  worktree: "更新工作区",
+  analyzing: "统计代码",
+};
+
 export const platformLabel = (value: Platform): string => PLATFORM_LABELS[value];
 export const sourceLabel = (value: RepoSource): string => SOURCE_LABELS[value];
 export const repoStatusLabel = (value: RepoStatus): string => REPO_STATUS_LABELS[value];
 export const syncRunStatusLabel = (value: SyncRunStatus): string =>
   SYNC_RUN_STATUS_LABELS[value];
 export const syncTriggerLabel = (value: SyncTrigger): string => SYNC_TRIGGER_LABELS[value];
+export const syncPhaseLabel = (value: SyncPhase): string => SYNC_PHASE_LABELS[value];
 
 export function isPlatform(value: string | null): value is Platform {
   return PLATFORM_OPTIONS.some((option) => option.value === value);

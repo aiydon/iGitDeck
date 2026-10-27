@@ -12,6 +12,7 @@ import { ArrowUpRightIcon, RefreshIcon } from "../icons";
 import { LanguageBar } from "../LanguageBar";
 import { MatchSnippet } from "../MatchSnippet";
 import { Spinner } from "../Spinner";
+import { SyncProgressBar } from "../SyncProgressBar";
 
 interface RepoTableProps {
   items: RepoSummary[];
@@ -84,6 +85,7 @@ export function RepoTable({ items, retryingId, onRetry }: RepoTableProps) {
               </td>
               <td>
                 <StatusBadge status={repo.status} />
+                {repo.progress && <SyncProgressBar progress={repo.progress} compact />}
               </td>
               <td>
                 <div className="row-actions">

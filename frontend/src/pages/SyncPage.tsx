@@ -1,24 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 
 import { api } from "../api/client";
 import type { SyncListParams, SyncRunStatus, SyncRunView } from "../api/client";
-import { SyncStatusBadge } from "../components/Badges";
 import { EmptyState } from "../components/EmptyState";
-import { RefreshIcon, SearchIcon } from "../components/icons";
+import { SearchIcon } from "../components/icons";
 import { Notice } from "../components/Notice";
 import type { NoticeTone } from "../components/Notice";
 import { Pagination } from "../components/Pagination";
-import { Spinner } from "../components/Spinner";
-import {
-  errorMessage,
-  formatDateTime,
-  formatDuration,
-  relativeTime,
-  shortSha,
-} from "../lib/format";
+import { SyncRunsTable } from "../components/repo/SyncRunsTable";
+import { errorMessage } from "../lib/format";
+import { readPageParam, withQueryParam } from "../lib/repoQuery";
 import { useLiveRefresh, useRequest } from "../lib/hooks";
-import { syncTriggerLabel } from "../lib/options";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
 
 const PAGE_SIZE = 20;
@@ -40,15 +33,10 @@ function readStatus(value: string | null): SyncRunStatus | undefined {
     : undefined;
 }
 
-function readPage(value: string | null): number {
-  const parsed = Number(value ?? "1");
-  return Number.isFinite(parsed) && parsed >= 1 ? Math.floor(parsed) : 1;
-}
-
 export function SyncPage() {
   const [params, setParams] = useSearchParams();
   const status = readStatus(params.get("status"));
-  const page = readPage(params.get("page"));
+  const page = readPageParam(params.get("page"));
   const [notice, setNotice] = useState<NoticeState | null>(null);
   const [retrying, setRetrying] = useState<number | null>(null);
 
@@ -65,33 +53,25 @@ export function SyncPage() {
 
   useEffect(() => {
     if (data && data.pages > 0 && page > data.pages) {
-      setParams((current) => {
-        const next = new URLSearchParams(current);
-        next.set("page", String(data.pages));
-        return next;
-      }, { replace: true });
+      setParams((current) => withQueryParam(current, "page", String(data.pages)), {
+        replace: true,
+      });
     }
   }, [data, page, setParams]);
 
   const changeStatus = useCallback(
     (value: string) => {
-      setParams((current) => {
-        const next = new URLSearchParams(current);
-        if (value) next.set("status", value);
-        else next.delete("status");
-        next.delete("page");
-        return next;
-      }, { replace: true });
+      setParams((current) => withQueryParam(current, "status", value || null), {
+        replace: true,
+      });
     },
     [setParams],
   );
 
   function changePage(nextPage: number) {
-    setParams((current) => {
-      const next = new URLSearchParams(current);
-      next.set("page", String(nextPage));
-      return next;
-    }, { replace: true });
+    setParams((current) => withQueryParam(current, "page", String(nextPage)), {
+      replace: true,
+    });
   }
 
   async function retry(run: SyncRunView) {
@@ -161,62 +141,12 @@ export function SyncPage() {
           />
         ) : (
           <>
-            <div className="table-scroll">
-              <table className="history-table sync-table">
-                <thead>
-                  <tr>
-                    <th>状态</th>
-                    <th>仓库</th>
-                    <th>触发</th>
-                    <th>开始</th>
-                    <th className="numeric">耗时</th>
-                    <th>提交</th>
-                    <th>信息</th>
-                    <th aria-label="操作" />
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.items.map((run) => (
-                    <tr key={run.id}>
-                      <td>
-                        <SyncStatusBadge status={run.status} />
-                      </td>
-                      <td>
-                        <Link className="repo-name sync-repo" to={`/repos/${run.repo_id}`}>
-                          {run.full_name}
-                        </Link>
-                      </td>
-                      <td>{syncTriggerLabel(run.trigger)}</td>
-                      <td title={formatDateTime(run.started_at)}>
-                        {relativeTime(run.started_at)}
-                      </td>
-                      <td className="numeric mono">{formatDuration(run.duration_seconds)}</td>
-                      <td className="mono">{shortSha(run.commit_sha)}</td>
-                      <td className="history-message" title={run.message ?? undefined}>
-                        {run.message ?? "—"}
-                      </td>
-                      <td>
-                        {run.status === "failed" && (
-                          <button
-                            type="button"
-                            className="button compact ghost retry-button"
-                            onClick={() => retry(run)}
-                            disabled={retrying === run.repo_id}
-                          >
-                            {retrying === run.repo_id ? (
-                              <Spinner label="重试中" />
-                            ) : (
-                              <RefreshIcon size={14} />
-                            )}
-                            重试
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <SyncRunsTable
+              runs={data.items}
+              showRepo
+              retryingId={retrying}
+              onRetry={retry}
+            />
             <Pagination
               page={data.page}
               pages={data.pages}
