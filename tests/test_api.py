@@ -136,7 +136,7 @@ def test_api_lifecycle(settings: Settings) -> None:
         assert root.status_code == 503
         assert "前端尚未构建" in root.text
 
-        deleted = client.delete(f"/api/repos/{repo_id}")
-        assert deleted.status_code == 204
-        assert client.get(f"/api/repos/{repo_id}").status_code == 404
-        assert client.get("/api/repos").json()["total"] == 1
+        # Removal is an operator action on the host, not a web endpoint.
+        assert client.delete(f"/api/repos/{repo_id}").status_code == 405
+        assert client.get(f"/api/repos/{repo_id}").status_code == 200
+        assert client.get("/api/repos").json()["total"] == 2

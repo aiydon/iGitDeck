@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Path, Query, Response
+from fastapi import APIRouter, Path, Query, Response
 from fastapi.responses import FileResponse
 
 from igitdeck.api.deps import CatalogDep, ContainerDep, FilesDep
@@ -66,14 +66,6 @@ async def sync_repo(repo_id: RepoId, container: ContainerDep) -> SyncQueuedResul
         queued=queued,
         message=None if queued else "该仓库正在同步",
     )
-
-
-@router.delete("/{repo_id}", status_code=204)
-async def delete_repo(repo_id: RepoId, container: ContainerDep) -> Response:
-    if container.coordinator.is_running(repo_id):
-        raise HTTPException(status_code=409, detail="该仓库正在同步，暂不能删除")
-    await asyncio.to_thread(container.catalog.delete, repo_id)
-    return Response(status_code=204)
 
 
 @router.get("/{repo_id}/raw/{file_path:path}", response_class=FileResponse)

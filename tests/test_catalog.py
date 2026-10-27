@@ -221,7 +221,7 @@ def test_dashboard_overview(seeded, container: Container) -> None:
     assert len(overview.recent_repos) == 3
 
 
-def test_delete_removes_database_and_disk(seeded, container: Container) -> None:
+def test_operator_delete_removes_database_and_disk(seeded, container: Container) -> None:
     click = seeded["click"]
     bare = container.paths.bare_repo(click.platform, click.owner, click.name)
     bare.mkdir(parents=True)
