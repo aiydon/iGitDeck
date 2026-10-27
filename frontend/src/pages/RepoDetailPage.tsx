@@ -357,7 +357,9 @@ export function RepoDetailPage() {
           <section className="panel">
             <EmptyState
               title="暂无趋势数据"
-              description="成功同步后按默认分支的提交历史生成。"
+              description={
+                data.insights_note ?? "成功同步后按默认分支的提交历史生成。"
+              }
               icon={<SparkIcon size={28} />}
             />
           </section>

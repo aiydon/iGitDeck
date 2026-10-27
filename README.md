@@ -196,7 +196,7 @@ data/
 |---|---|
 | `repos` | 仓库身份、状态、描述、README 索引文本、分支、最后同步/提交、失败次数 |
 | `repo_snapshots` | 每个仓库仅保留当前提交的代码/注释/空行/文件数/磁盘/语言占比 |
-| `repo_trends` | 默认分支 git 洞察：行数历史（最多 120 点）、52 周活跃度、12 月增删、Top 5 贡献者 |
+| `repo_trends` | 默认分支 git 洞察：行数历史（最多 120 点）、52 周活跃度、12 月增删、Top 5 贡献者、跳过原因 |
 | `sync_runs` | 最近 50 次同步的开始/结束、触发方式、成功失败、commit、消息 |
 
 同步进度不落库：它是任务运行中的瞬时状态，进程重启后由下一次同步重新建立。
@@ -228,6 +228,7 @@ data/
 | `IGD_GIT_HTTP_TIMEOUT_SECONDS` | `1800` | upload-pack 超时 |
 | `IGD_GIT_HTTP_MAX_REQUEST_BYTES` | `8388608` | upload-pack 请求体（含解压后）上限，超出返回 413 |
 | `IGD_SCC_BINARY` / `IGD_SCC_TIMEOUT_SECONDS` | `scc` / `600` | scc 路径与超时 |
+| `IGD_GIT_INSIGHTS_MAX_COMMITS` | `100000` | 超过该提交数时跳过 git 趋势/活跃度扫描，并在趋势页说明原因 |
 | `IGD_FETCH_METADATA` | `true` | 手动添加时通过 GitHub API 补全描述（失败不影响添加） |
 | `IGD_CRAWLER_API_BASE_URL` | `http://127.0.0.1:8000` | 爬虫调用主进程的地址 |
 | `IGD_CRAWLER_LANGUAGES` / `IGD_CRAWLER_SINCE` | 空 / `daily` | Trending 语言与时间范围 |
@@ -299,7 +300,7 @@ make hooks       # 安装可选 commit-msg hook
 - **SQLite 足够**：单进程写、WAL 并发读，避免引入额外组件；repository 层集中 SQL。
 - **派生值不落库**：总代码量、语言百分比、状态计数和筛选 facets 均从最新快照实时聚合；只有昂贵的统计快照与同步日志持久化。
 - **git 是趋势的事实来源**：`repo_trends` 由默认分支的 `git log --numstat` 生成，不随同步频率漂移；`repo_snapshots` 只保留当前提交的一份统计，趋势不再依赖快照历史。
-- **按需补算**：升级或首次访问时，若当前提交尚无趋势（或旧版本只存了行数趋势），详情请求在线程池中按镜像补齐并落库；之后的请求直接读取。
+- **按需补算**：升级或首次访问时，若当前提交尚无趋势（或旧版本只存了行数趋势），详情请求在线程池中按镜像补齐并落库；启动时也会在后台为缺失数据的已就绪仓库补算，避免首个请求等待长历史 git log。
 - **导航按任务分组**：仪表盘 / 仓库 / 同步三个入口；仓库与同步带计数徽标，侧栏底部显示同步队列状态并可直接跳到失败或待同步列表。
 - **更新时间只看提交**：列表与详情以 git 最后一次提交作为“更新”时间；本地同步时间单独标注为“本地镜像”。
 - **提交级一致性**：`repos.commit_sha` 记录已镜像的提交，统计快照与趋势仅在 commit 匹配时展示；同步记录按仓库保留最近 50 条。
@@ -316,7 +317,7 @@ make hooks       # 安装可选 commit-msg hook
 - GitLab 子组仓库（路径超过 `group/repo` 两段）暂不支持。
 - README 仅支持 Markdown 渲染；`.rst` / `.txt` 以纯文本显示。外部图片依赖出网访问。
 - scc 解析按 v4 JSON 输出编写；如需其他版本，请设置 `IGD_SCC_BINARY` 并确认输出字段。
-- 行数趋势统计的是 git 跟踪的文本行（含文档、配置），不等于 scc 代码行；提交数超过 2 万的历史会跳过 git 洞察，避免拖慢同步。
+- 行数趋势统计的是 git 跟踪的文本行（含文档、配置），不等于 scc 代码行；提交数超过 `IGD_GIT_INSIGHTS_MAX_COMMITS`（默认 10 万）时跳过 git 洞察，趋势页会显示具体原因。
 - 提交活跃度统计全部提交（含 merge）；行数趋势与增删按非 merge 提交的 diff 计算，末点以镜像 HEAD 补齐。
 - 超大仓库（GB 级）clone 可达数十分钟，期间列表页处于“同步中”，属预期；超过最长同步时间会被判定失败并按退避重试。
 - 可选功能（提交热力图、Top contributors、文件树、语法高亮、License 检测、RSS 等）未实现。
