@@ -8,6 +8,7 @@ export type SortOrder = components["schemas"]["SortOrder"];
 export type LanguageStat = components["schemas"]["LanguageStat"];
 export type RepoStats = components["schemas"]["RepoStats"];
 export type RepoSummary = components["schemas"]["RepoSummary"];
+export type SearchSnippet = components["schemas"]["SearchSnippet"];
 export type RepoPage = components["schemas"]["RepoPage"];
 export type RepoDetail = components["schemas"]["RepoDetail"];
 export type RepoAddResult = components["schemas"]["RepoAddResult"];

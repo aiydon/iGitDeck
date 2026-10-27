@@ -116,6 +116,16 @@ class RepoRecord(BaseModel):
     added_at: datetime
 
 
+class HighlightSpan(BaseModel):
+    start: int = Field(ge=0)
+    end: int = Field(ge=0)
+
+
+class SearchSnippet(BaseModel):
+    text: str
+    highlights: list[HighlightSpan] = Field(default_factory=list)
+
+
 class RepoSummary(BaseModel):
     id: int
     platform: Platform
@@ -133,6 +143,7 @@ class RepoSummary(BaseModel):
     last_attempt_at: datetime | None
     consecutive_failures: int
     stats: RepoStats | None
+    snippet: SearchSnippet | None = None
 
     @computed_field
     @property
@@ -148,6 +159,7 @@ class RepoSummary(BaseModel):
 class RepoWithStats(BaseModel):
     repo: RepoRecord
     stats: RepoStats | None
+    snippet: SearchSnippet | None = None
 
 
 class TrendPoint(BaseModel):

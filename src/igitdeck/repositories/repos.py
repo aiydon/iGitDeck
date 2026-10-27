@@ -9,6 +9,7 @@ from igitdeck.clock import from_epoch, to_epoch
 from igitdeck.db.database import Database
 from igitdeck.models.errors import RepoAlreadyExists
 from igitdeck.models.repo import (
+    HighlightSpan,
     Platform,
     RepoIdentity,
     RepoQuery,
@@ -17,6 +18,7 @@ from igitdeck.models.repo import (
     RepoStats,
     RepoStatus,
     RepoWithStats,
+    SearchSnippet,
     SortField,
     SortOrder,
 )
@@ -69,6 +71,12 @@ LEFT JOIN repo_snapshots l
     ON l.id = (SELECT max(s.id) FROM repo_snapshots s WHERE s.repo_id = r.id)
 """
 
+_HIGHLIGHT_START = "\x01"
+_HIGHLIGHT_END = "\x02"
+_SNIPPET_ELLIPSIS = "…"
+_SNIPPET_TOKENS = 24
+_SNIPPET_MAX_CHARS = 400
+
 
 def _repo_select(alias: str = "r") -> str:
     return ", ".join(f"{alias}.{column}" for column in _REPO_COLUMNS)
@@ -76,6 +84,41 @@ def _repo_select(alias: str = "r") -> str:
 
 def _snapshot_select(alias: str = "l", prefix: str = "") -> str:
     return ", ".join(f"{alias}.{column} AS {prefix}{column}" for column in _SNAPSHOT_COLUMNS)
+
+
+def parse_search_snippet(raw: str | None) -> SearchSnippet | None:
+    """Turn FTS5's marked snippet into plain text plus highlight offsets."""
+    if not raw:
+        return None
+
+    chars: list[str] = []
+    spans: list[HighlightSpan] = []
+    open_at: int | None = None
+    pending_space = False
+
+    for char in raw:
+        if char == _HIGHLIGHT_START:
+            open_at = len(chars)
+            continue
+        if char == _HIGHLIGHT_END:
+            if open_at is not None and len(chars) > open_at:
+                spans.append(HighlightSpan(start=open_at, end=len(chars)))
+            open_at = None
+            continue
+        if char.isspace():
+            pending_space = True
+            continue
+        if pending_space and chars:
+            chars.append(" ")
+        pending_space = False
+        chars.append(char)
+
+    while chars and chars[-1] == " ":
+        chars.pop()
+
+    text = "".join(chars)[:_SNIPPET_MAX_CHARS].rstrip()
+    highlights = [span for span in spans if span.end <= len(text) and span.start < span.end]
+    return SearchSnippet(text=text, highlights=highlights)
 
 
 def _repo_record(row: sqlite3.Row) -> RepoRecord:
@@ -180,12 +223,15 @@ class RepoRepository:
     def list_page(self, query: RepoQuery, fts_query: str | None) -> tuple[list[RepoWithStats], int]:
         clauses: list[str] = []
         params: list[object] = []
+        fts_join = ""
+        snippet_select = ""
+        snippet_params: list[object] = []
 
         if fts_query:
-            clauses.append(
-                "EXISTS (SELECT 1 FROM repos_fts "
-                "WHERE repos_fts.rowid = r.id AND repos_fts MATCH ?)"
-            )
+            fts_join = "JOIN repos_fts ON repos_fts.rowid = r.id"
+            snippet_select = ", snippet(repos_fts, -1, char(1), char(2), ?, ?) AS snippet"
+            snippet_params = [_SNIPPET_ELLIPSIS, _SNIPPET_TOKENS]
+            clauses.append("repos_fts MATCH ?")
             params.append(fts_query)
         if query.platform is not None:
             clauses.append("r.platform = ?")
@@ -204,7 +250,7 @@ class RepoRepository:
             params.append(query.language)
 
         where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
-        from_sql = f"FROM repos r {_LATEST_JOIN} {where_sql}"
+        from_sql = f"FROM repos r {_LATEST_JOIN} {fts_join} {where_sql}"
 
         order_sql = self._order_sql(query.sort, query.order)
         offset = (query.page - 1) * query.page_size
@@ -214,17 +260,19 @@ class RepoRepository:
             rows = connection.execute(
                 f"""
                 SELECT {_repo_select()}, {_snapshot_select(prefix="snapshot_")}
+                       {snippet_select}
                 {from_sql}
                 {order_sql}
                 LIMIT ? OFFSET ?
                 """,
-                [*params, query.page_size, offset],
+                [*snippet_params, *params, query.page_size, offset],
             ).fetchall()
 
         items = [
             RepoWithStats(
                 repo=_repo_record(row),
                 stats=_stats_from_prefixed_row(row),
+                snippet=parse_search_snippet(row["snippet"] if fts_query else None),
             )
             for row in rows
         ]

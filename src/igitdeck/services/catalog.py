@@ -25,6 +25,7 @@ from igitdeck.models.repo import (
     RepoStats,
     RepoStatus,
     RepoSummary,
+    SearchSnippet,
     SnapshotRecord,
     parse_repo_url,
 )
@@ -115,7 +116,7 @@ class CatalogService:
 
     def list_repos(self, query: RepoQuery) -> RepoPage:
         items, total = self.repos.list_page(query, build_fts_query(query.q))
-        summaries = [self._summary(item.repo, item.stats) for item in items]
+        summaries = [self._summary(item.repo, item.stats, item.snippet) for item in items]
         pages = (total + query.page_size - 1) // query.page_size if total else 0
         return RepoPage(
             items=summaries,
@@ -193,7 +194,12 @@ class CatalogService:
     def _latest_stats(self, record: RepoRecord) -> RepoStats | None:
         return _as_stats(self.stats.latest(record.id))
 
-    def _summary(self, record: RepoRecord, stats: RepoStats | None) -> RepoSummary:
+    def _summary(
+        self,
+        record: RepoRecord,
+        stats: RepoStats | None,
+        snippet: SearchSnippet | None = None,
+    ) -> RepoSummary:
         return RepoSummary(
             id=record.id,
             platform=record.platform,
@@ -211,6 +217,7 @@ class CatalogService:
             last_attempt_at=record.last_attempt_at,
             consecutive_failures=record.consecutive_failures,
             stats=stats,
+            snippet=snippet,
         )
 
     @staticmethod

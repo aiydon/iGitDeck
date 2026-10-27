@@ -225,3 +225,28 @@ def test_delete_removes_database_and_disk(seeded, container: Container) -> None:
     assert not worktree.exists()
     with pytest.raises(RepoNotFound):
         seeded["catalog"].delete(click.id)
+
+
+def test_search_returns_highlighted_snippet(seeded) -> None:
+    catalog = seeded["catalog"]
+
+    readme_match = catalog.list_repos(RepoQuery(q="unique-readme-token")).items[0]
+    assert readme_match.snippet is not None
+    assert "unique-readme-token" in readme_match.snippet.text
+    assert readme_match.snippet.highlights
+    highlighted = [
+        readme_match.snippet.text[span.start : span.end].lower()
+        for span in readme_match.snippet.highlights
+    ]
+    assert {"unique", "readme", "token"} & set(highlighted)
+
+    description_match = catalog.list_repos(RepoQuery(q="toolkit")).items[0]
+    assert description_match.snippet is not None
+    assert "toolkit" in description_match.snippet.text.lower()
+
+    filtered = catalog.list_repos(RepoQuery(q="toolkit", platform=Platform.GITHUB))
+    assert filtered.total == 1
+    assert filtered.items[0].snippet is not None
+
+    plain = catalog.list_repos(RepoQuery()).items[0]
+    assert plain.snippet is None
