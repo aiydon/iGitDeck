@@ -28,7 +28,6 @@ from igitdeck.services.trends import TrendService
 logger = logging.getLogger(__name__)
 
 # Maps git's own progress phases onto the overall 0-100 sync bar.
-# (start, end, label) on the overall 0-100 bar.
 _GIT_PHASE_SCALE: dict[str, tuple[int, int, str]] = {
     "enumerating objects": (2, 8, "枚举对象"),
     "counting objects": (8, 20, "统计对象"),

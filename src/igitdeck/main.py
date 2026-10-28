@@ -21,6 +21,7 @@ from igitdeck.clock import utcnow
 from igitdeck.config import Settings, load_settings
 from igitdeck.logging_setup import configure_logging
 from igitdeck.services.container import build_container
+from igitdeck.services.trends import INSIGHTS_VERSION
 
 if TYPE_CHECKING:
     from igitdeck.services.container import Container
@@ -99,7 +100,7 @@ async def _warm_insights(container: Container) -> None:
     multi-second git log on repositories with long histories.
     """
     try:
-        records = await asyncio.to_thread(container.repos.ready_without_insights)
+        records = await asyncio.to_thread(container.repos.ready_needing_insights, INSIGHTS_VERSION)
     except Exception:
         logger.exception("insights warmup query failed")
         return

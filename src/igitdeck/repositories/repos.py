@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict
 
 from igitdeck.clock import from_epoch, to_epoch
 from igitdeck.db.database import Database
-from igitdeck.languages import decode_many, is_counted, summarize
+from igitdeck.languages import decode_many
 from igitdeck.models.errors import RepoAlreadyExists
 from igitdeck.models.repo import (
     FacetField,
@@ -114,26 +114,19 @@ def _repo_record(row: sqlite3.Row) -> RepoRecord:
 
 
 def _stats_from_prefixed_row(row: sqlite3.Row) -> RepoStats | None:
-    """Build statistics, deriving line/file totals from the charted languages.
+    """Build statistics from the joined snapshot languages.
 
     Totals stored before the GitHub-style filter included JSON and Markdown;
-    summing the normalized languages keeps every surface consistent without a
-    rescan.
+    deriving them from the normalized languages keeps every surface consistent
+    without a rescan.
     """
     if row["snapshot_id"] is None:
         return None
-    languages = decode_many(row["snapshot_languages"])
-    code, _docs, files = summarize(languages)
-    counted_only = [language for language in languages if is_counted(language.name)]
-    return RepoStats(
+    return RepoStats.from_languages(
         captured_at=from_epoch(row["snapshot_captured_at"]),
         commit_sha=row["snapshot_commit_sha"],
-        code_lines=code,
-        comment_lines=sum(language.comment for language in counted_only),
-        blank_lines=sum(language.blank for language in counted_only),
-        file_count=files,
+        languages=decode_many(row["snapshot_languages"]),
         disk_bytes=row["snapshot_disk_bytes"],
-        languages=languages,
     )
 
 
@@ -278,8 +271,12 @@ class RepoRepository:
             ).fetchall()
         return [row["id"] for row in rows]
 
-    def ready_without_insights(self) -> list[RepoRecord]:
-        """Ready repositories whose stored git insights do not match HEAD."""
+    def ready_needing_insights(self, insights_version: int) -> list[RepoRecord]:
+        """Ready repositories whose stored insights are missing or outdated.
+
+        Outdated includes rows written by an older insights format, so an
+        upgrade warms them in the background instead of on first page view.
+        """
         with self.db.connection() as connection:
             rows = connection.execute(
                 f"""
@@ -290,10 +287,10 @@ class RepoRepository:
                 WHERE r.status = ?
                   AND r.commit_sha IS NOT NULL
                   AND r.default_branch IS NOT NULL
-                  AND t.repo_id IS NULL
+                  AND (t.repo_id IS NULL OR t.format_version < ?)
                 ORDER BY r.id
                 """,
-                (RepoStatus.READY.value,),
+                (RepoStatus.READY.value, insights_version),
             ).fetchall()
         return [_repo_record(row) for row in rows]
 
@@ -392,7 +389,10 @@ class RepoRepository:
         """Fail syncs stuck in `syncing` past the longest legitimate run.
 
         Only a vanished task (cancelled thread, dead worker) reaches this; a live
-        sync is bounded by the git/scc timeouts and finishes first.
+        sync is bounded by the git/scc timeouts and finishes first. A row that
+        entered `syncing` without ever recording an attempt looks the same as a
+        dead worker, so a NULL `last_attempt_at` also counts as stale; skipping
+        it would leave that row `syncing` forever.
         """
         with self.db.transaction() as connection:
             rows = connection.execute(

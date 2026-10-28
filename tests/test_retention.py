@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -11,6 +11,7 @@ from igitdeck.models.repo import (
     RepoIdentity,
     RepoSource,
     RepoStats,
+    RepoStatus,
 )
 from igitdeck.models.sync import SyncQuery, SyncRunStatus, SyncTrigger
 from igitdeck.services.container import Container
@@ -150,3 +151,31 @@ def test_language_totals_merge_repositories_sharing_a_language(
     assert [(item.name, item.code_lines, item.repos) for item in totals] == [("Python", 150, 2)]
     overview = container.dashboard.overview()
     assert [(item.name, item.percent) for item in overview.languages] == [("Python", 100.0)]
+
+
+def test_stale_syncing_rows_without_an_attempt_are_recovered(container: Container) -> None:
+    never_attempted = add_repo(container, "never-attempted")
+    with container.db.transaction() as connection:
+        connection.execute(
+            "UPDATE repos SET status = ? WHERE id = ?",
+            (RepoStatus.SYNCING.value, never_attempted.id),
+        )
+    recent = add_repo(container, "recent-attempt")
+    container.repos.mark_syncing(recent.id, datetime.now(UTC))
+
+    reset = container.repos.reset_stale_syncing(
+        older_than=datetime.now(UTC) - timedelta(hours=1),
+        message="stale",
+    )
+
+    assert reset == [never_attempted.id]
+    recovered = container.repos.get(never_attempted.id)
+    assert recovered is not None
+    assert recovered.status is RepoStatus.ERROR
+    assert recovered.consecutive_failures == 1
+    assert recovered.error_message == "stale"
+
+    untouched = container.repos.get(recent.id)
+    assert untouched is not None
+    assert untouched.status is RepoStatus.SYNCING
+    assert untouched.consecutive_failures == 0

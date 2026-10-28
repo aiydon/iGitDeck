@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from igitdeck.clock import utcnow
-from igitdeck.languages import counted, summarize
+from igitdeck.languages import counted, is_counted, summarize
 from igitdeck.models.dashboard import (
     LanguageSlice,
     Overview,
@@ -13,7 +13,6 @@ from igitdeck.models.dashboard import (
 )
 from igitdeck.models.repo import (
     FacetField,
-    LanguageStat,
     RepoQuery,
     RepoStatus,
     SortField,
@@ -64,9 +63,9 @@ class DashboardService:
         upcoming.sort(key=lambda item: (item[0], item[1].id))
         next_pair = upcoming[0] if upcoming else None
         disk_bytes = self.stats.disk_bytes()
-        charted = counted(self.stats.language_totals())
+        language_totals = self.stats.language_totals()
 
-        recent = self.repos.recently_active(8)
+        recent = self.repos.recently_active(12)
 
         return SystemStatus(
             repo_count=sum(counts.values()),
@@ -78,7 +77,9 @@ class DashboardService:
             sync_interval_minutes=self.policy.interval_seconds // 60,
             next_sync_at=next_pair[0] if self.auto_sync and next_pair else None,
             due_now=due,
-            total_code_lines=sum(language.code_lines for language in charted),
+            total_code_lines=sum(
+                total.code_lines for total in language_totals if is_counted(total.name)
+            ),
             total_disk_bytes=disk_bytes,
             recent_activity=[
                 SidebarRepo(
@@ -109,17 +110,7 @@ class DashboardService:
     def overview(self) -> Overview:
         status_counts = self.repos.counts_by(FacetField.STATUS)
         language_totals = self.stats.language_totals()
-        language_stats = [
-            LanguageStat(
-                name=total.name,
-                code=total.code_lines,
-                comment=0,
-                blank=0,
-                files=total.files,
-                bytes=total.bytes,
-            )
-            for total in language_totals
-        ]
+        language_stats = [total.as_stat() for total in language_totals]
         charted = counted(language_stats)
         code_lines, _doc_lines, file_count = summarize(language_stats)
         repos_by_language = {total.name: total.repos for total in language_totals}

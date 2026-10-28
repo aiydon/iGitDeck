@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from datetime import date, datetime
 from enum import StrEnum
 from urllib.parse import unquote, urlsplit
@@ -109,6 +110,37 @@ class RepoStats(BaseModel):
     def text_lines(self) -> int:
         """Every tracked language line; detail pages show this total."""
         return sum(language.code for language in self.languages)
+
+    @classmethod
+    def from_languages(
+        cls,
+        *,
+        captured_at: datetime,
+        commit_sha: str | None,
+        languages: Sequence[LanguageStat],
+        disk_bytes: int,
+    ) -> RepoStats:
+        """Build stats from scc languages using the charted-code rules.
+
+        Code lines and the file count follow `languages.summarize` (code over
+        programming + markup, files over everything); comments and blanks are
+        summed over charted languages only so data/prose files stay out of the
+        code metrics.
+        """
+        from igitdeck.languages import is_counted, summarize
+
+        code_lines, _doc_lines, file_count = summarize(languages)
+        counted_languages = [language for language in languages if is_counted(language.name)]
+        return cls(
+            captured_at=captured_at,
+            commit_sha=commit_sha,
+            code_lines=code_lines,
+            comment_lines=sum(language.comment for language in counted_languages),
+            blank_lines=sum(language.blank for language in counted_languages),
+            file_count=file_count,
+            disk_bytes=disk_bytes,
+            languages=languages,
+        )
 
 
 class SnapshotRecord(RepoStats):
@@ -255,6 +287,7 @@ class RepoLineTrend(BaseModel):
     churn: list[MonthChurn] = Field(default_factory=list)
     contributors: list[Contributor] = Field(default_factory=list)
     note: str | None = None
+    format_version: int = 0
 
 
 class ReadmeView(BaseModel):

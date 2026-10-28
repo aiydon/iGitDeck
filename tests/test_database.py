@@ -28,7 +28,7 @@ def test_migrate_is_idempotent_and_records_version(tmp_path: Path) -> None:
         assert {"repos", "repo_snapshots", "sync_runs", "repo_trends", "repos_fts"} <= tables
         assert connection.execute("PRAGMA journal_mode").fetchone()[0].lower() == "wal"
         trend_columns = {row[1] for row in connection.execute("PRAGMA table_info(repo_trends)")}
-        assert {"activity", "churn", "contributors", "note"} <= trend_columns
+        assert {"activity", "churn", "contributors", "note", "format_version"} <= trend_columns
     finally:
         connection.close()
 
@@ -156,5 +156,44 @@ def test_migrate_v5_sanitizes_legacy_error_messages(tmp_path: Path) -> None:
         messages = {row[0] for row in connection.execute("SELECT message FROM sync_runs")}
         assert "fatal: unable to access /home/iy/repo" not in messages
         assert "main @ abcdef1234" in messages
+    finally:
+        connection.close()
+
+
+def test_migrate_v6_keeps_trends_and_defaults_format_version(tmp_path: Path) -> None:
+    path = tmp_path / "v5.db"
+    connection = sqlite3.connect(path)
+    for target in (1, 2, 3, 4, 5):
+        for statement in MIGRATIONS[target]:
+            connection.execute(statement)
+    connection.execute(
+        """
+        INSERT INTO repos (platform, owner, name, url, source, status, added_at, commit_sha)
+        VALUES ('github', 'a', 'b', 'u', 'manual', 'ready', 1, 'sha')
+        """
+    )
+    connection.execute(
+        """
+        INSERT INTO repo_trends (repo_id, commit_sha, generated_at, points)
+        VALUES (1, 'sha', 1, '[{"committed_at":1,"commit_sha":"sha","lines":1}]')
+        """
+    )
+    connection.execute("PRAGMA user_version = 5")
+    connection.commit()
+    connection.close()
+
+    Database(path).migrate()
+
+    connection = sqlite3.connect(path)
+    try:
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
+        row = connection.execute(
+            "SELECT repo_id, commit_sha, points, format_version FROM repo_trends"
+        ).fetchone()
+        assert row is not None
+        assert row[0] == 1
+        assert row[1] == "sha"
+        assert row[2] == '[{"committed_at":1,"commit_sha":"sha","lines":1}]'
+        assert row[3] == 0
     finally:
         connection.close()

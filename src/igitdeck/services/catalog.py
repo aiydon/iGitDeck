@@ -43,7 +43,7 @@ from igitdeck.services.metadata import MetadataClient
 from igitdeck.services.policy import SyncPolicy
 from igitdeck.services.progress import ProgressTracker
 from igitdeck.services.readme import ReadmeService
-from igitdeck.services.trends import MIN_ACTIVITY_DAYS, TrendService
+from igitdeck.services.trends import INSIGHTS_VERSION, TrendService
 
 logger = logging.getLogger(__name__)
 
@@ -203,12 +203,7 @@ class CatalogService:
         stored = self.trends.record(record.id, commit_sha)
         if commit_sha is None or record.default_branch is None:
             return stored
-        # Rows written before git insights existed only carry the line trend,
-        # and pre-upgrade rows carry just 52 weeks of activity; regenerate both.
-        enriched = stored is not None and (
-            not stored.points or len(stored.activity) >= MIN_ACTIVITY_DAYS
-        )
-        if enriched:
+        if stored is not None and stored.format_version >= INSIGHTS_VERSION:
             return stored
 
         bare = self.paths.bare_repo(record.platform, record.owner, record.name)

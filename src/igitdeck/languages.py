@@ -84,7 +84,8 @@ def _weight(language: LanguageStat, *, use_bytes: bool) -> int:
     return language.bytes if use_bytes else language.code
 
 
-def _with_shares(languages: Sequence[LanguageStat]) -> list[LanguageStat]:
+def with_shares(languages: Sequence[LanguageStat]) -> list[LanguageStat]:
+    """All languages with categories and shares over the given set."""
     if not languages:
         return []
     use_bytes = any(language.bytes > 0 for language in languages)
@@ -104,14 +105,9 @@ def _with_shares(languages: Sequence[LanguageStat]) -> list[LanguageStat]:
     return shares
 
 
-def annotate(languages: Sequence[LanguageStat]) -> list[LanguageStat]:
-    """All languages with categories and byte shares over the full set."""
-    return _with_shares(languages)
-
-
 def counted(languages: Sequence[LanguageStat]) -> list[LanguageStat]:
     """Programming + markup only, re-shared to sum to 100%."""
-    return _with_shares([language for language in languages if is_counted(language.name)])
+    return with_shares([language for language in languages if is_counted(language.name)])
 
 
 def summarize(languages: Sequence[LanguageStat]) -> tuple[int, int, int]:
@@ -124,11 +120,11 @@ def summarize(languages: Sequence[LanguageStat]) -> tuple[int, int, int]:
 
 def encode_many(languages: Sequence[LanguageStat]) -> str:
     return json.dumps(
-        [language.model_dump(mode="json") for language in annotate(languages)],
+        [language.model_dump(mode="json") for language in with_shares(languages)],
         ensure_ascii=False,
         separators=(",", ":"),
     )
 
 
 def decode_many(payload: str) -> list[LanguageStat]:
-    return annotate([LanguageStat.model_validate(item) for item in json.loads(payload)])
+    return with_shares([LanguageStat.model_validate(item) for item in json.loads(payload)])

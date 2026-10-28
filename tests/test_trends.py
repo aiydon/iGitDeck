@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
+import pytest
+
 from igitdeck.clock import to_epoch
 from igitdeck.git import CommitLineDelta, GitClient
 from igitdeck.models.repo import (
@@ -16,7 +18,7 @@ from igitdeck.models.repo import (
 from igitdeck.repositories.trends import TrendRepository
 from igitdeck.services.container import Container
 from igitdeck.services.trends import (
-    MIN_ACTIVITY_DAYS,
+    INSIGHTS_VERSION,
     TrendService,
     build_contributors,
     build_daily_activity,
@@ -227,7 +229,7 @@ def test_build_daily_activity_defaults_to_the_history_window() -> None:
 
     assert days[0].day == date(2023, 1, 1)
     assert days[-1].day == date(2026, 10, 7)
-    assert len(days) >= MIN_ACTIVITY_DAYS
+    assert len(days) >= 365 * 2
 
 
 def test_build_month_churn_buckets_added_and_deleted() -> None:
@@ -355,8 +357,81 @@ def test_catalog_detail_activity_and_no_sync_runs(container: Container, make_git
     detail = container.catalog.detail(record.id)
 
     assert detail.activity
-    assert len(detail.activity) >= MIN_ACTIVITY_DAYS
+    assert len(detail.activity) >= 365 * 2
     assert "sync_runs" not in detail.model_dump()
+
+
+def test_catalog_detail_refreshes_legacy_insights_only_once(
+    container: Container,
+    make_git_repo,
+    git,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = make_git_repo({"a.txt": "one\ntwo\n"})
+    commit = git(source, "rev-parse", "HEAD").strip()
+    bare = container.paths.bare_repo(Platform.GITHUB, "local", "legacy-insights")
+    bare.parent.mkdir(parents=True, exist_ok=True)
+    container.sync.git.clone_mirror(source.as_uri(), bare)
+
+    record = container.repos.add(
+        RepoIdentity(
+            platform=Platform.GITHUB,
+            owner="local",
+            name="legacy-insights",
+            url=source.as_uri(),
+        ),
+        source=RepoSource.MANUAL,
+        description=None,
+        added_at=datetime.now(UTC),
+    )
+    container.stats.add_snapshot(
+        record.id,
+        RepoStats(
+            captured_at=datetime.now(UTC),
+            commit_sha=commit,
+            code_lines=2,
+            comment_lines=0,
+            blank_lines=0,
+            file_count=1,
+            disk_bytes=0,
+        ),
+    )
+    container.repos.mark_success(
+        record.id,
+        synced_at=datetime.now(UTC),
+        default_branch="main",
+        commit_sha=commit,
+        last_commit_at=datetime.now(UTC),
+        readme_path=None,
+        readme_text=None,
+        description=None,
+    )
+    TrendRepository(container.db).save(
+        record.id,
+        commit_sha=commit,
+        points=[TrendPoint(committed_at=datetime.now(UTC), commit_sha=commit, lines=2)],
+        activity=[DayActivity(day=datetime.now(UTC).date(), commits=1)],
+    )
+
+    calls = 0
+    refresh = container.trends.refresh
+
+    def counting_refresh(*args, **kwargs) -> None:
+        nonlocal calls
+        calls += 1
+        refresh(*args, **kwargs)
+
+    monkeypatch.setattr(container.trends, "refresh", counting_refresh)
+
+    container.catalog.detail(record.id)
+    second = container.catalog.detail(record.id)
+
+    assert calls == 1
+    stored = container.trends.record(record.id, commit)
+    assert stored is not None
+    assert stored.format_version >= INSIGHTS_VERSION
+    assert second.trend == stored.points
+    assert second.activity == stored.activity
 
 
 def test_startup_warmup_rebuilds_missing_insights(container: Container, make_git_repo, git) -> None:
@@ -392,7 +467,9 @@ def test_startup_warmup_rebuilds_missing_insights(container: Container, make_git
         description=None,
     )
 
-    assert [repo.id for repo in container.repos.ready_without_insights()] == [record.id]
+    assert [repo.id for repo in container.repos.ready_needing_insights(INSIGHTS_VERSION)] == [
+        record.id
+    ]
 
     asyncio.run(_warm_insights(container))
 
@@ -400,4 +477,4 @@ def test_startup_warmup_rebuilds_missing_insights(container: Container, make_git
     assert stored is not None
     assert stored.points
     assert stored.note is None
-    assert container.repos.ready_without_insights() == []
+    assert container.repos.ready_needing_insights(INSIGHTS_VERSION) == []

@@ -11,7 +11,7 @@ from typing import Protocol
 
 from pydantic import BaseModel
 
-from igitdeck.languages import annotate, is_counted, summarize
+from igitdeck.languages import is_counted, summarize, with_shares
 from igitdeck.models.repo import LanguageStat
 
 
@@ -55,7 +55,7 @@ def parse_scc_json(payload: str) -> list[LanguageStat]:
             )
     except (KeyError, TypeError, ValueError) as exc:
         raise StatsCollectionError(f"scc 输出字段异常: {exc}") from exc
-    return annotate(languages)
+    return with_shares(languages)
 
 
 def directory_size(root: Path) -> int:

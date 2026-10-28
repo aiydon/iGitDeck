@@ -6,7 +6,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
-from igitdeck.models.repo import DayActivity, RepoStatus, RepoSummary
+from igitdeck.models.repo import DayActivity, LanguageStat, RepoStatus, RepoSummary
 from igitdeck.models.sync import SyncRunView
 
 
@@ -40,6 +40,20 @@ class LanguageTotal(BaseModel):
     files: int
     bytes: int
     repos: int
+
+    def as_stat(self) -> LanguageStat:
+        """View the aggregate as a `LanguageStat` for charting.
+
+        Aggregates carry no comment/blank split, so those stay zero.
+        """
+        return LanguageStat(
+            name=self.name,
+            code=self.code_lines,
+            comment=0,
+            blank=0,
+            files=self.files,
+            bytes=self.bytes,
+        )
 
 
 class SidebarRepo(BaseModel):

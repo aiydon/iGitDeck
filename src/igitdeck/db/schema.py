@@ -5,7 +5,7 @@ Bump SCHEMA_VERSION and append the migration statements when the schema changes.
 
 from __future__ import annotations
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 # Each entry upgrades the database from the previous version to its key.
 MIGRATIONS: dict[int, tuple[str, ...]] = {
@@ -192,5 +192,9 @@ MIGRATIONS: dict[int, tuple[str, ...]] = {
           AND message IS NOT NULL
           AND message GLOB '*[A-Za-z]*'
         """,
+    ),
+    6: (
+        # Insights gain a format version so stale rows regenerate exactly once.
+        "ALTER TABLE repo_trends ADD COLUMN format_version INTEGER NOT NULL DEFAULT 0",
     ),
 }

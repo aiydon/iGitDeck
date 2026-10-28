@@ -28,7 +28,7 @@ MAX_TREND_POINTS = 120
 DEFAULT_MAX_COMMITS = 100_000
 ACTIVITY_WEEKS = 52
 HISTORY_YEARS = 4
-MIN_ACTIVITY_DAYS = 365 * 2
+INSIGHTS_VERSION = 2
 CHURN_MONTHS = 12
 TOP_CONTRIBUTORS = 5
 
@@ -165,6 +165,7 @@ class TrendService:
                     commit_sha=commit_sha,
                     points=[],
                     note="默认分支没有可分析的提交",
+                    format_version=INSIGHTS_VERSION,
                 )
                 return
 
@@ -202,6 +203,7 @@ class TrendService:
                 churn=build_month_churn(deltas, anchor_timestamp=tip_epoch),
                 contributors=build_contributors([commit.author for commit in commits]),
                 note=note,
+                format_version=INSIGHTS_VERSION,
             )
         except Exception as exc:  # git history is derived data
             logger.warning("git insights unavailable for repo %s: %s", repo_id, exc)
@@ -214,10 +216,6 @@ class TrendService:
         if record is None or record.commit_sha != commit_sha:
             return None
         return record
-
-    def covered(self, repo_id: int, commit_sha: str | None) -> bool:
-        """Whether this commit's history was already generated (even if empty)."""
-        return self.record(repo_id, commit_sha) is not None
 
     def aggregate_activity(self, weeks: int = ACTIVITY_WEEKS) -> list[DayActivity]:
         """Sum daily commits across mirrored repositories for the dashboard."""

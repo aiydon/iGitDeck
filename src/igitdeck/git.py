@@ -81,9 +81,12 @@ class GitClient:
         environment["LC_ALL"] = "C"
         return environment
 
+    def _command(self, args: list[str]) -> list[str]:
+        return [self.binary, *args]
+
     def _run(self, args: list[str], *, cwd: Path | None = None) -> GitResult:
         environment = self._environment()
-        command = [self.binary, *args]
+        command = self._command(args)
         try:
             completed = subprocess.run(
                 command,
@@ -113,7 +116,7 @@ class GitClient:
         stderr is merged into stdout and read line by line. A watchdog kills the
         process on inactivity (or the hard cap), which also unblocks the reader.
         """
-        command = [self.binary, *args]
+        command = self._command(args)
         try:
             process = subprocess.Popen(
                 command,
@@ -226,15 +229,11 @@ class GitClient:
         on_progress: ProgressCallback | None = None,
     ) -> None:
         """Fetch one branch first so later retries can reuse its objects."""
-        args = [
-            "--git-dir",
-            str(bare),
-            "fetch",
-            "origin",
-            f"+refs/heads/{branch}:refs/heads/{branch}",
-        ]
+        args = ["--git-dir", str(bare), "fetch"]
         if on_progress:
-            args.insert(3, "--progress")
+            args.append("--progress")
+        args.extend(["origin", f"+refs/heads/{branch}:refs/heads/{branch}"])
+        if on_progress:
             self._stream(args, on_progress)
         else:
             self._run(args)

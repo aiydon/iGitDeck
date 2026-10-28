@@ -32,6 +32,7 @@ class TrendRepository:
         churn: Sequence[MonthChurn] = (),
         contributors: Sequence[Contributor] = (),
         note: str | None = None,
+        format_version: int = 0,
     ) -> None:
         def encode(items: Sequence[BaseModel]) -> str:
             return json.dumps(
@@ -45,8 +46,8 @@ class TrendRepository:
                 """
                 INSERT INTO repo_trends (
                     repo_id, commit_sha, generated_at,
-                    points, activity, churn, contributors, note
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    points, activity, churn, contributors, note, format_version
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(repo_id) DO UPDATE SET
                     commit_sha = excluded.commit_sha,
                     generated_at = excluded.generated_at,
@@ -54,7 +55,8 @@ class TrendRepository:
                     activity = excluded.activity,
                     churn = excluded.churn,
                     contributors = excluded.contributors,
-                    note = excluded.note
+                    note = excluded.note,
+                    format_version = excluded.format_version
                 """,
                 (
                     repo_id,
@@ -65,6 +67,7 @@ class TrendRepository:
                     encode(churn),
                     encode(contributors),
                     note,
+                    format_version,
                 ),
             )
 
@@ -72,7 +75,8 @@ class TrendRepository:
         with self.db.connection() as connection:
             row = connection.execute(
                 """
-                SELECT commit_sha, generated_at, points, activity, churn, contributors, note
+                SELECT commit_sha, generated_at, points, activity, churn, contributors, note,
+                       format_version
                 FROM repo_trends
                 WHERE repo_id = ?
                 """,
@@ -86,7 +90,7 @@ class TrendRepository:
             rows = connection.execute(
                 """
                 SELECT t.commit_sha, t.generated_at, t.points, t.activity, t.churn,
-                       t.contributors, t.note
+                       t.contributors, t.note, t.format_version
                 FROM repo_trends t
                 JOIN repos r ON r.id = t.repo_id AND r.commit_sha = t.commit_sha
                 """
@@ -110,4 +114,5 @@ class TrendRepository:
                 Contributor.model_validate(item) for item in json.loads(row["contributors"] or "[]")
             ],
             note=row["note"],
+            format_version=row["format_version"],
         )

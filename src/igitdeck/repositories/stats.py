@@ -4,28 +4,20 @@ from __future__ import annotations
 
 from igitdeck.clock import from_epoch, to_epoch
 from igitdeck.db.database import Database
-from igitdeck.languages import decode_many, encode_many, is_counted, summarize
+from igitdeck.languages import decode_many, encode_many
 from igitdeck.models.dashboard import LanguageTotal
 from igitdeck.models.repo import RepoStats, SnapshotRecord
 from igitdeck.repositories.sql import LATEST_SNAPSHOT_IDS
 
 
 def _snapshot_record(row) -> SnapshotRecord:
-    languages = decode_many(row["languages"])
-    code_lines, _doc_lines, file_count = summarize(languages)
-    counted_languages = [language for language in languages if is_counted(language.name)]
-    return SnapshotRecord(
-        id=row["id"],
-        repo_id=row["repo_id"],
+    base = RepoStats.from_languages(
         captured_at=from_epoch(row["captured_at"]),
         commit_sha=row["commit_sha"],
-        code_lines=code_lines,
-        comment_lines=sum(language.comment for language in counted_languages),
-        blank_lines=sum(language.blank for language in counted_languages),
-        file_count=file_count,
+        languages=decode_many(row["languages"]),
         disk_bytes=row["disk_bytes"],
-        languages=languages,
     )
+    return SnapshotRecord(id=row["id"], repo_id=row["repo_id"], **base.model_dump())
 
 
 class StatsRepository:
