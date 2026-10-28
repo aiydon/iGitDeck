@@ -2,14 +2,43 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Annotated
 
 from fastapi import APIRouter, Query
 
 from igitdeck.api.deps import ContainerDep
-from igitdeck.models.sync import SyncQuery, SyncRunPage
+from igitdeck.models.sync import (
+    ActiveSync,
+    BulkRetryResult,
+    ProgressSnapshot,
+    SyncQuery,
+    SyncRunPage,
+    SyncTrigger,
+)
 
 router = APIRouter(prefix="/api/syncs", tags=["sync"])
+
+
+@router.get("/progress", response_model=ProgressSnapshot)
+def active_progress(container: ContainerDep) -> ProgressSnapshot:
+    return ProgressSnapshot(
+        items=[
+            ActiveSync(repo_id=repo_id, **progress.model_dump())
+            for repo_id, progress in container.progress.snapshot().items()
+        ]
+    )
+
+
+@router.post("/retry-failed", response_model=BulkRetryResult)
+async def retry_failed(container: ContainerDep) -> BulkRetryResult:
+    repo_ids = await asyncio.to_thread(container.repos.failed_repo_ids)
+    queued = [
+        repo_id
+        for repo_id in repo_ids
+        if container.coordinator.request(repo_id, SyncTrigger.MANUAL) is not None
+    ]
+    return BulkRetryResult(queued=len(queued), repo_ids=queued)
 
 
 @router.get("", response_model=SyncRunPage)

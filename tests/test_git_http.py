@@ -68,6 +68,8 @@ def test_smart_http_clone_and_raw_files(
     with TestClient(app) as client:
         detail = client.get(f"/api/repos/{record.id}").json()
         assert detail["readme"]["path"] == "README.md"
+        assert detail["recent_commits"]
+        assert detail["recent_commits"][0]["message"] == "initial"
         assert f"/api/repos/{record.id}/raw/logo.png" in detail["readme"]["html"]
 
         raw = client.get(f"/api/repos/{record.id}/raw/logo.png")

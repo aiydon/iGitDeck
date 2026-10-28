@@ -38,6 +38,19 @@ class SyncProgress(BaseModel):
     updated_at: datetime
 
 
+class ActiveSync(SyncProgress):
+    repo_id: int
+
+
+class ProgressSnapshot(BaseModel):
+    items: list[ActiveSync] = Field(default_factory=list)
+
+
+class BulkRetryResult(BaseModel):
+    queued: int = Field(ge=0)
+    repo_ids: list[int] = Field(default_factory=list)
+
+
 class SyncRunRecord(BaseModel):
     id: int
     repo_id: int

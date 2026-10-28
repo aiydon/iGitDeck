@@ -46,3 +46,7 @@ class ProgressTracker:
     def clear(self, repo_id: int) -> None:
         with self._lock:
             self._entries.pop(repo_id, None)
+
+    def snapshot(self) -> dict[int, SyncProgress]:
+        with self._lock:
+            return dict(self._entries)

@@ -204,6 +204,17 @@ class RepoWithStats(BaseModel):
     progress: SyncProgress | None = None
 
 
+class CommitSummary(BaseModel):
+    sha: str
+    committed_at: datetime
+    author: str
+    message: str
+    files_changed: int = Field(ge=0)
+    insertions: int = Field(ge=0)
+    deletions: int = Field(ge=0)
+    is_merge: bool = False
+
+
 class TrendPoint(BaseModel):
     """Tracked text lines at one commit on the default branch."""
 
@@ -326,6 +337,7 @@ class RepoDetail(BaseModel):
     churn: list[MonthChurn] = Field(default_factory=list)
     contributors: list[Contributor] = Field(default_factory=list)
     insights_note: str | None = None
+    recent_commits: list[CommitSummary] = Field(default_factory=list)
     sync_runs: list[SyncRunView]
 
 

@@ -236,6 +236,14 @@ class RepoRepository:
             connection.execute("DELETE FROM repos WHERE id = ?", (repo_id,))
         return _repo_record(row)
 
+    def failed_repo_ids(self) -> list[int]:
+        with self.db.connection() as connection:
+            rows = connection.execute(
+                "SELECT id FROM repos WHERE status = ? ORDER BY id",
+                (RepoStatus.ERROR.value,),
+            ).fetchall()
+        return [row["id"] for row in rows]
+
     def ready_without_insights(self) -> list[RepoRecord]:
         """Ready repositories whose stored git insights do not match HEAD."""
         with self.db.connection() as connection:

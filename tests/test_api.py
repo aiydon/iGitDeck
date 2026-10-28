@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+import pytest
 from fastapi.testclient import TestClient
 
 from igitdeck.config import Settings
 from igitdeck.main import create_app
-from igitdeck.models.sync import SyncRunStatus, SyncTrigger
+from igitdeck.models.sync import SyncPhase, SyncRunStatus, SyncTrigger
 
 
 def test_batch_add_reports_each_line(settings: Settings) -> None:
@@ -189,3 +190,51 @@ def test_api_lifecycle(settings: Settings) -> None:
         assert client.delete(f"/api/repos/{repo_id}").status_code == 405
         assert client.get(f"/api/repos/{repo_id}").status_code == 200
         assert client.get("/api/repos").json()["total"] == 2
+
+
+def test_bulk_retry_queues_failed_repositories(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    app = create_app(settings)
+
+    with TestClient(app) as client:
+        repo_ids = []
+        for name in ("bulk-one", "bulk-two"):
+            response = client.post("/api/repos", json={"url": f"https://github.com/local/{name}"})
+            repo_ids.append(response.json()["repo"]["id"])
+        for repo_id in repo_ids:
+            app.state.container.repos.mark_failure(repo_id, "boom")
+
+        queued: list[tuple[int, SyncTrigger]] = []
+
+        def fake_request(repo_id: int, trigger: SyncTrigger):
+            queued.append((repo_id, trigger))
+            return object()
+
+        monkeypatch.setattr(app.state.container.coordinator, "request", fake_request)
+
+        response = client.post("/api/syncs/retry-failed")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["queued"] == 2
+        assert set(body["repo_ids"]) == set(repo_ids)
+        assert {trigger for _, trigger in queued} == {SyncTrigger.MANUAL}
+
+        app.state.container.progress.update(
+            repo_ids[0], phase=SyncPhase.CLONING, percent=42, detail="接收对象"
+        )
+        snapshot = client.get("/api/syncs/progress").json()
+        assert len(snapshot["items"]) == 1
+        item = snapshot["items"][0]
+        assert item["repo_id"] == repo_ids[0]
+        assert item["percent"] == 42
+        assert item["phase"] == "cloning"
+
+
+def test_bulk_retry_without_failures(settings: Settings) -> None:
+    app = create_app(settings)
+
+    with TestClient(app) as client:
+        response = client.post("/api/syncs/retry-failed")
+        assert response.status_code == 200
+        assert response.json() == {"queued": 0, "repo_ids": []}

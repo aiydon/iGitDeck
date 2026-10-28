@@ -15,6 +15,7 @@ from igitdeck.services.coordinator import SyncCoordinator
 from igitdeck.services.dashboard import DashboardService
 from igitdeck.services.files import FileService
 from igitdeck.services.git_http import GitHttpService
+from igitdeck.services.history import CommitService
 from igitdeck.services.metadata import MetadataClient
 from igitdeck.services.policy import SyncPolicy
 from igitdeck.services.progress import ProgressTracker
@@ -37,6 +38,7 @@ class Container:
         sync_runs: SyncRunRepository,
         trends: TrendService,
         progress: ProgressTracker,
+        history: CommitService,
         readme: ReadmeService,
         files: FileService,
         metadata: MetadataClient,
@@ -55,6 +57,7 @@ class Container:
         self.sync_runs = sync_runs
         self.trends = trends
         self.progress = progress
+        self.history = history
         self.readme = readme
         self.files = files
         self.metadata = metadata
@@ -85,6 +88,7 @@ def build_container(settings: Settings) -> Container:
     git = GitClient(settings.git_timeout_seconds)
     trends = TrendService(git, trend_repository, max_commits=settings.git_insights_max_commits)
     progress = ProgressTracker()
+    history = CommitService(git, paths)
     collector = SccStatsCollector(settings.scc_binary, settings.scc_timeout_seconds)
     sync = SyncService(
         repos=repos,
@@ -122,6 +126,7 @@ def build_container(settings: Settings) -> Container:
         metadata=metadata,
         trends=trends,
         progress=progress,
+        history=history,
     )
     dashboard = DashboardService(
         repos=repos,
@@ -146,6 +151,7 @@ def build_container(settings: Settings) -> Container:
         sync_runs=sync_runs,
         trends=trends,
         progress=progress,
+        history=history,
         readme=readme,
         files=files,
         metadata=metadata,

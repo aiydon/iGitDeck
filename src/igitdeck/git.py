@@ -12,6 +12,9 @@ from pathlib import Path
 
 from pydantic import BaseModel, computed_field
 
+from igitdeck.clock import from_epoch
+from igitdeck.models.repo import CommitSummary
+
 ProgressCallback = Callable[[str, int], None]
 
 
@@ -282,6 +285,72 @@ class GitClient:
                 shas, timestamps, added, deleted, strict=True
             )
         ]
+
+    def recent_commits(self, bare: Path, branch: str, limit: int = 30) -> list[CommitSummary]:
+        """Newest commits on `branch` with per-commit line statistics."""
+        result = self._run(
+            [
+                "--git-dir",
+                str(bare),
+                "log",
+                f"-n{max(1, min(limit, 200))}",
+                "--numstat",
+                "--format=@@%H%x1f%ct%x1f%an%x1f%P%x1f%s",
+                f"refs/heads/{branch}",
+            ]
+        )
+        commits: list[CommitSummary] = []
+        current: CommitSummary | None = None
+        files = insertions = deletions = 0
+
+        def flush() -> None:
+            nonlocal current
+            if current is None:
+                return
+            commits.append(
+                current.model_copy(
+                    update={
+                        "files_changed": files,
+                        "insertions": insertions,
+                        "deletions": deletions,
+                    }
+                )
+            )
+            current = None
+
+        for line in result.stdout.splitlines():
+            if line.startswith("@@"):
+                flush()
+                files = insertions = deletions = 0
+                fields = line[2:].split("\x1f", 4)
+                if len(fields) != 5:
+                    continue
+                sha, timestamp, author, parents, message = fields
+                committed_at = from_epoch(int(timestamp))
+                if committed_at is None:
+                    continue
+                current = CommitSummary(
+                    sha=sha,
+                    committed_at=committed_at,
+                    author=author,
+                    message=message,
+                    files_changed=0,
+                    insertions=0,
+                    deletions=0,
+                    is_merge=len(parents.split()) > 1,
+                )
+            elif current is not None:
+                parts = line.split("\t")
+                if len(parts) != 3:
+                    continue
+                added, removed, _ = parts
+                files += 1
+                if added.isdigit():
+                    insertions += int(added)
+                if removed.isdigit():
+                    deletions += int(removed)
+        flush()
+        return commits
 
     def tracked_line_count(self, bare: Path, branch: str) -> int:
         """Lines in tracked text files at `branch`, using git's binary filter.
