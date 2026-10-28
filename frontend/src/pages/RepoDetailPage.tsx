@@ -45,12 +45,12 @@ import { useLiveRefresh, useRequest } from "../lib/hooks";
 import { notifyStatusChanged } from "../lib/status";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
 
-const TABS = ["overview", "readme", "commits", "trend", "sync"] as const;
+const TABS = ["readme", "overview", "commits", "trend", "sync"] as const;
 type Tab = (typeof TABS)[number];
 
 const TAB_LABELS: Record<Tab, string> = {
-  overview: "概览",
   readme: "README",
+  overview: "概览",
   commits: "提交",
   trend: "趋势",
   sync: "同步",
@@ -62,7 +62,7 @@ interface NoticeState {
 }
 
 function readTab(value: string | null): Tab {
-  return TABS.includes(value as Tab) ? (value as Tab) : "overview";
+  return TABS.includes(value as Tab) ? (value as Tab) : "readme";
 }
 
 export function RepoDetailPage() {
@@ -100,7 +100,7 @@ export function RepoDetailPage() {
     setSearchParams(
       (current) => {
         const updated = new URLSearchParams(current);
-        if (next === "overview") updated.delete("tab");
+        if (next === "readme") updated.delete("tab");
         else updated.set("tab", next);
         return updated;
       },

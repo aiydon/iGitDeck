@@ -22,19 +22,28 @@ export function LanguagePanel({ stats }: { stats: RepoStats | null }) {
         <>
           <LanguageBar languages={languages} maxSegments={10} />
           <ul className="detail-lang-list">
-            {languages.map((language) => (
-              <li key={language.name}>
-                <span
-                  className="lang-dot"
-                  style={{ background: languageColor(language.name) }}
-                />
-                <span className="detail-lang-name">{language.name}</span>
-                <span className="detail-lang-code mono">
-                  {compactNumber(language.code)}
-                </span>
-                <strong>{formatPercent(language.percent)}</strong>
-              </li>
-            ))}
+            {languages.map((language) => {
+              const color = languageColor(language.name);
+              return (
+                <li key={language.name}>
+                  <span className="lang-dot" style={{ background: color }} />
+                  <span className="detail-lang-name">{language.name}</span>
+                  <span className="detail-lang-track" aria-hidden="true">
+                    <span
+                      className="detail-lang-fill"
+                      style={{
+                        width: `${Math.max(language.percent, 1)}%`,
+                        background: color,
+                      }}
+                    />
+                  </span>
+                  <span className="detail-lang-code mono">
+                    {compactNumber(language.code)}
+                  </span>
+                  <strong>{formatPercent(language.percent)}</strong>
+                </li>
+              );
+            })}
           </ul>
         </>
       )}
