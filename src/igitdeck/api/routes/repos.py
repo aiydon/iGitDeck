@@ -9,6 +9,7 @@ from fastapi import APIRouter, Path, Query, Response
 from fastapi.responses import FileResponse
 
 from igitdeck.api.deps import CatalogDep, ContainerDep, FilesDep
+from igitdeck.models.branches import BranchList
 from igitdeck.models.repo import (
     RepoAddResult,
     RepoBatchCreateRequest,
@@ -85,6 +86,12 @@ async def sync_repo(repo_id: RepoId, container: ContainerDep) -> SyncQueuedResul
         queued=queued,
         message=None if queued else "该仓库正在同步",
     )
+
+
+@router.get("/{repo_id}/branches", response_model=BranchList)
+def list_branches(repo_id: RepoId, container: ContainerDep) -> BranchList:
+    record = container.catalog.get_record(repo_id)
+    return container.branches.list(record)
 
 
 @router.get("/{repo_id}/raw/{file_path:path}", response_class=FileResponse)

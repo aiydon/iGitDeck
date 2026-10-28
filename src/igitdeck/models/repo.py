@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field, computed_field, field_validator
 
 from igitdeck.models.errors import InvalidRepoUrl
 from igitdeck.models.naming import RepoNaming
-from igitdeck.models.sync import SyncProgress, SyncRunView
+from igitdeck.models.sync import SyncProgress
 from igitdeck.urls import clone_path
 
 
@@ -70,9 +70,14 @@ class SortOrder(StrEnum):
 
 
 class LanguageStat(BaseModel):
-    """One language as scc reported it; `percent` is a byte share."""
+    """One language as scc reported it; `percent` is a byte share.
+
+    `category` is programming / markup / data / prose, assigned once in
+    `igitdeck.languages` so every surface can decide whether to chart it.
+    """
 
     name: str
+    category: str = "programming"
     code: int = Field(ge=0)
     comment: int = Field(ge=0)
     blank: int = Field(ge=0)
@@ -90,6 +95,14 @@ class RepoStats(BaseModel):
     file_count: int = Field(ge=0)
     disk_bytes: int = Field(ge=0)
     languages: list[LanguageStat] = Field(default_factory=list)
+
+    @computed_field
+    @property
+    def doc_lines(self) -> int:
+        """Lines in data/config and prose files, kept out of `code_lines`."""
+        return sum(
+            language.code for language in self.languages if language.category in {"data", "prose"}
+        )
 
 
 class SnapshotRecord(RepoStats):
@@ -328,7 +341,6 @@ class RepoDetail(BaseModel):
     insights_note: str | None = None
     recent_commits: list[CommitSummary] = Field(default_factory=list)
     next_sync_at: datetime | None = None
-    sync_runs: list[SyncRunView]
 
 
 _SEGMENT = re.compile(r"^[A-Za-z0-9._-]+$")
@@ -352,13 +364,23 @@ def _from_host_path(host: str, path: str) -> RepoIdentity:
         raise InvalidRepoUrl(f"不支持的平台 {host!r}；支持: {supported}")
 
     cleaned = unquote(path).strip().strip("/")
+    # GitLab web URLs carry a /-/ suffix for files, issues, merge requests…
+    if "/-/" in cleaned:
+        cleaned = cleaned.split("/-/", 1)[0]
     if cleaned.lower().endswith(".git"):
         cleaned = cleaned[:-4]
     parts = [part for part in cleaned.split("/") if part]
-    if len(parts) != 2:
+
+    # GitLab groups nest arbitrarily (openfoam/core/openfoam); the last segment
+    # is always the repository and everything before it is the namespace.
+    max_depth = 5 if platform is Platform.GITLAB else 2
+    if not 2 <= len(parts) <= max_depth:
+        if platform is Platform.GITLAB:
+            raise InvalidRepoUrl("仓库地址必须形如 https://gitlab.com/组/仓库")
         raise InvalidRepoUrl("仓库地址必须形如 https://host/owner/repo")
-    owner = _validate_segment(parts[0], "owner")
-    name = _validate_segment(parts[1], "仓库名")
+    segments = [_validate_segment(part, "路径") for part in parts]
+    owner = "/".join(segments[:-1])
+    name = segments[-1]
 
     canonical_host = PLATFORM_HOSTS[platform]
     return RepoIdentity(

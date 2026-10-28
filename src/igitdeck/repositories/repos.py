@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict
 
 from igitdeck.clock import from_epoch, to_epoch
 from igitdeck.db.database import Database
-from igitdeck.languages import decode_many
+from igitdeck.languages import decode_many, is_counted, summarize
 from igitdeck.models.errors import RepoAlreadyExists
 from igitdeck.models.repo import (
     FacetField,
@@ -123,13 +123,15 @@ def _stats_from_prefixed_row(row: sqlite3.Row) -> RepoStats | None:
     if row["snapshot_id"] is None:
         return None
     languages = decode_many(row["snapshot_languages"])
+    code, _docs, files = summarize(languages)
+    counted_only = [language for language in languages if is_counted(language.name)]
     return RepoStats(
         captured_at=from_epoch(row["snapshot_captured_at"]),
         commit_sha=row["snapshot_commit_sha"],
-        code_lines=sum(language.code for language in languages),
-        comment_lines=sum(language.comment for language in languages),
-        blank_lines=sum(language.blank for language in languages),
-        file_count=sum(language.files for language in languages),
+        code_lines=code,
+        comment_lines=sum(language.comment for language in counted_only),
+        blank_lines=sum(language.blank for language in counted_only),
+        file_count=files,
         disk_bytes=row["snapshot_disk_bytes"],
         languages=languages,
     )

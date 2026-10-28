@@ -37,18 +37,15 @@ from igitdeck.models.repo import (
 from igitdeck.paths import StoragePaths
 from igitdeck.repositories.repos import RepoRepository
 from igitdeck.repositories.stats import StatsRepository
-from igitdeck.repositories.sync_runs import SyncRunRepository
 from igitdeck.search import build_fts_query
 from igitdeck.services.history import CommitService
 from igitdeck.services.metadata import MetadataClient
 from igitdeck.services.policy import SyncPolicy
 from igitdeck.services.progress import ProgressTracker
 from igitdeck.services.readme import ReadmeService
-from igitdeck.services.trends import TrendService
+from igitdeck.services.trends import MIN_ACTIVITY_DAYS, TrendService
 
 logger = logging.getLogger(__name__)
-
-SYNC_HISTORY_LIMIT = 10
 
 
 class CatalogService:
@@ -57,7 +54,6 @@ class CatalogService:
         *,
         repos: RepoRepository,
         stats: StatsRepository,
-        runs: SyncRunRepository,
         readme: ReadmeService,
         paths: StoragePaths,
         metadata: MetadataClient,
@@ -69,7 +65,6 @@ class CatalogService:
     ) -> None:
         self.repos = repos
         self.stats = stats
-        self.runs = runs
         self.readme = readme
         self.paths = paths
         self.metadata = metadata
@@ -196,7 +191,6 @@ class CatalogService:
             insights_note=insights.note if insights else None,
             recent_commits=self.history.recent(record),
             next_sync_at=(self.policy.next_due_at(record, utcnow()) if self.auto_sync else None),
-            sync_runs=self.runs.for_repo(record.id, SYNC_HISTORY_LIMIT),
         )
 
     def _insights(self, record: RepoRecord, stats: RepoStats | None) -> RepoLineTrend | None:
@@ -209,9 +203,10 @@ class CatalogService:
         stored = self.trends.record(record.id, commit_sha)
         if commit_sha is None or record.default_branch is None:
             return stored
-        # Rows written before git insights existed only carry the line trend.
-        enriched = stored is not None and bool(
-            stored.activity or stored.churn or stored.contributors or not stored.points
+        # Rows written before git insights existed only carry the line trend,
+        # and pre-upgrade rows carry just 52 weeks of activity; regenerate both.
+        enriched = stored is not None and (
+            not stored.points or len(stored.activity) >= MIN_ACTIVITY_DAYS
         )
         if enriched:
             return stored

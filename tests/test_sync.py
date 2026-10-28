@@ -109,8 +109,7 @@ def test_sync_clones_updates_and_indexes(
     assert len(detail.trend) == 2
     assert detail.trend[0].commit_sha == first_commit
     assert detail.trend[1].commit_sha == second_commit
-    assert len(detail.sync_runs) == 2
-    assert all(run.status is SyncRunStatus.SUCCESS for run in detail.sync_runs)
+    assert "sync_runs" not in detail.model_dump()
 
 
 def test_sync_failure_is_recorded_and_backoff_applies(

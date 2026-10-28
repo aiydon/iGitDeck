@@ -61,8 +61,7 @@ class GitHttpService:
         *,
         method: str,
         platform: str,
-        owner: str,
-        repo: str,
+        project: str,
         operation: GitOperation,
         query_string: str,
         content_type: str | None,
@@ -75,7 +74,7 @@ class GitHttpService:
             raise GitHttpBadRequest(f"{operation} 仅支持 {expected_method}")
 
         platform_enum = _parse_platform(platform)
-        name = repo[:-4] if repo.lower().endswith(".git") else repo
+        owner, name = _split_project(project)
         record = self.repos.get_by_identity(platform_enum, owner, name)
         if record is None:
             raise RepoNotFound(f"{owner}/{name} 尚未同步")
@@ -243,6 +242,19 @@ class GitHttpService:
             logger.warning("git http-backend process did not exit after kill")
         if process.stdin is not None:
             process.stdin.close()
+
+
+def _split_project(project: str) -> tuple[str, str]:
+    """Split a request path such as ``group/sub/repo.git`` into owner and name."""
+    parts = [part for part in project.strip("/").split("/") if part]
+    if len(parts) < 2 or any(part in {".", ".."} for part in parts):
+        raise RepoNotFound(f"未知仓库 {project!r}")
+    name = parts[-1]
+    if name.lower().endswith(".git"):
+        name = name[:-4]
+    if not name or name in {".", ".."}:
+        raise RepoNotFound(f"未知仓库 {project!r}")
+    return "/".join(parts[:-1]), name
 
 
 def _parse_platform(value: str) -> Platform:

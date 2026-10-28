@@ -42,6 +42,7 @@ def test_smart_http_clone_and_raw_files(
             "main.py": 'print("hello")\n',
         }
     )
+    nested_source = make_git_repo({"nested.py": 'print("nested")\n'})
     # Many refs make modern Git gzip the upload-pack POST body; the server must decode it.
     for index in range(120):
         git(source, "tag", f"v{index:03d}")
@@ -64,6 +65,21 @@ def test_smart_http_clone_and_raw_files(
     )
     container.sync.sync(record.id, SyncTrigger.MANUAL)
     assert container.repos.get(record.id).status.value == "ready"
+
+    nested_identity = RepoIdentity(
+        platform=Platform.GITHUB,
+        owner="local/nested",
+        name="demo",
+        url=nested_source.as_uri(),
+    )
+    nested_record = container.repos.add(
+        nested_identity,
+        source=RepoSource.MANUAL,
+        description="Nested owner HTTP integration repository",
+        added_at=datetime.now(UTC),
+    )
+    container.sync.sync(nested_record.id, SyncTrigger.MANUAL)
+    assert container.repos.get(nested_record.id).status.value == "ready"
 
     with TestClient(app) as client:
         detail = client.get(f"/api/repos/{record.id}").json()
@@ -163,6 +179,23 @@ def test_smart_http_clone_and_raw_files(
             check=True,
         )
         assert log.stdout.strip() == "initial"
+
+        nested_clone_dir = tmp_path / "nested-clone"
+        nested_cloned = subprocess.run(
+            [
+                "git",
+                "clone",
+                "--quiet",
+                f"{base_url}/git/github/local/nested/demo.git",
+                str(nested_clone_dir),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
+        )
+        assert nested_cloned.returncode == 0, nested_cloned.stderr
+        assert (nested_clone_dir / "nested.py").read_text(encoding="utf-8") == 'print("nested")\n'
     finally:
         server.should_exit = True
         thread.join(timeout=15)

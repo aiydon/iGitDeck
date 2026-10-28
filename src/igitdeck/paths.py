@@ -39,11 +39,21 @@ class StoragePaths(BaseModel):
 
     def bare_repo(self, platform: Platform | str, owner: str, name: str) -> Path:
         platform_value = getattr(platform, "value", platform)
-        return self.repos_dir / _segment(platform_value) / _segment(owner) / f"{_segment(name)}.git"
+        return (
+            self.repos_dir / _segment(platform_value) / _owner_path(owner) / f"{_segment(name)}.git"
+        )
 
     def worktree(self, platform: Platform | str, owner: str, name: str) -> Path:
         platform_value = getattr(platform, "value", platform)
-        return self.worktrees_dir / _segment(platform_value) / _segment(owner) / _segment(name)
+        return self.worktrees_dir / _segment(platform_value) / _owner_path(owner) / _segment(name)
+
+
+def _owner_path(owner: str) -> Path:
+    """Nested GitLab namespaces map to nested directories."""
+    segments = owner.split("/")
+    if not segments or any(segment in {"", ".", ".."} for segment in segments):
+        raise ValueError(f"unsafe path segment: {owner!r}")
+    return Path(*(_segment(segment) for segment in segments))
 
 
 def _segment(value: str) -> str:

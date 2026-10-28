@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from igitdeck.clock import utcnow
-from igitdeck.languages import is_counted
+from igitdeck.languages import counted, summarize
 from igitdeck.models.dashboard import (
     LanguageSlice,
     Overview,
@@ -11,7 +11,14 @@ from igitdeck.models.dashboard import (
     StatusSlice,
     SystemStatus,
 )
-from igitdeck.models.repo import FacetField, RepoQuery, RepoStatus, SortField, SortOrder
+from igitdeck.models.repo import (
+    FacetField,
+    LanguageStat,
+    RepoQuery,
+    RepoStatus,
+    SortField,
+    SortOrder,
+)
 from igitdeck.repositories.repos import RepoRepository
 from igitdeck.repositories.stats import StatsRepository
 from igitdeck.repositories.sync_runs import SyncRunRepository
@@ -21,6 +28,7 @@ from igitdeck.services.trends import TrendService
 
 RECENT_SYNC_LIMIT = 6
 RECENT_REPO_LIMIT = 5
+UPCOMING_SYNC_LIMIT = 3
 
 
 class DashboardService:
@@ -53,11 +61,10 @@ class DashboardService:
             for repo in candidates
             if (moment := self.policy.next_due_at(repo, now)) is not None
         ]
-        next_pair = min(upcoming, key=lambda item: item[0]) if upcoming else None
+        upcoming.sort(key=lambda item: (item[0], item[1].id))
+        next_pair = upcoming[0] if upcoming else None
         disk_bytes = self.stats.disk_bytes()
-        counted = [
-            language for language in self.stats.language_totals() if is_counted(language.name)
-        ]
+        charted = counted(self.stats.language_totals())
 
         recent = self.repos.recently_active(8)
 
@@ -70,11 +77,8 @@ class DashboardService:
             auto_sync=self.auto_sync,
             sync_interval_minutes=self.policy.interval_seconds // 60,
             next_sync_at=next_pair[0] if self.auto_sync and next_pair else None,
-            next_sync_last_attempt_at=(
-                next_pair[1].last_attempt_at if self.auto_sync and next_pair else None
-            ),
             due_now=due,
-            total_code_lines=sum(language.code_lines for language in counted),
+            total_code_lines=sum(language.code_lines for language in charted),
             total_disk_bytes=disk_bytes,
             recent_activity=[
                 SidebarRepo(
@@ -85,15 +89,40 @@ class DashboardService:
                 )
                 for repo in recent
             ],
+            # Scheduling is off → nothing is "upcoming"; the sidebar says so.
+            upcoming=(
+                [
+                    SidebarRepo(
+                        id=repo.id,
+                        full_name=repo.full_name,
+                        status=repo.status,
+                        last_attempt_at=repo.last_attempt_at,
+                        next_sync_at=moment,
+                    )
+                    for moment, repo in upcoming[:UPCOMING_SYNC_LIMIT]
+                ]
+                if self.auto_sync
+                else []
+            ),
         )
 
     def overview(self) -> Overview:
         status_counts = self.repos.counts_by(FacetField.STATUS)
-        disk_bytes = self.stats.disk_bytes()
-        language_totals = [
-            language for language in self.stats.language_totals() if is_counted(language.name)
+        language_totals = self.stats.language_totals()
+        language_stats = [
+            LanguageStat(
+                name=total.name,
+                code=total.code_lines,
+                comment=0,
+                blank=0,
+                files=total.files,
+                bytes=total.bytes,
+            )
+            for total in language_totals
         ]
-        language_weight = sum(language.bytes or language.code_lines for language in language_totals)
+        charted = counted(language_stats)
+        code_lines, _doc_lines, file_count = summarize(language_stats)
+        repos_by_language = {total.name: total.repos for total in language_totals}
 
         recent_repos = self.catalog.list_repos(
             RepoQuery(
@@ -106,9 +135,9 @@ class DashboardService:
 
         return Overview(
             repo_count=sum(status_counts.values()),
-            total_code_lines=sum(language.code_lines for language in language_totals),
-            total_disk_bytes=disk_bytes,
-            total_files=sum(language.files for language in language_totals),
+            total_code_lines=code_lines,
+            total_disk_bytes=self.stats.disk_bytes(),
+            total_files=file_count,
             statuses=[
                 StatusSlice(status=status, count=status_counts.get(status.value, 0))
                 for status in RepoStatus
@@ -117,18 +146,11 @@ class DashboardService:
             languages=[
                 LanguageSlice(
                     name=language.name,
-                    code_lines=language.code_lines,
-                    percent=(
-                        round(
-                            (language.bytes or language.code_lines) / language_weight * 100,
-                            2,
-                        )
-                        if language_weight
-                        else 0.0
-                    ),
-                    repos=language.repos,
+                    code_lines=language.code,
+                    percent=language.percent,
+                    repos=repos_by_language.get(language.name, 0),
                 )
-                for language in language_totals
+                for language in charted
             ],
             recent_syncs=self.runs.recent(RECENT_SYNC_LIMIT),
             recent_repos=recent_repos.items,

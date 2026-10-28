@@ -27,6 +27,8 @@ logger = logging.getLogger(__name__)
 MAX_TREND_POINTS = 120
 DEFAULT_MAX_COMMITS = 100_000
 ACTIVITY_WEEKS = 52
+HISTORY_YEARS = 4
+MIN_ACTIVITY_DAYS = 365 * 2
 CHURN_MONTHS = 12
 TOP_CONTRIBUTORS = 5
 
@@ -67,20 +69,24 @@ def build_line_trend(
     return [points[index] for index in indexes]
 
 
-def build_daily_activity(timestamps: list[int], weeks: int = ACTIVITY_WEEKS) -> list[DayActivity]:
-    """Daily commit counts for the trailing weeks, ending on the newest week."""
-    if not timestamps or weeks <= 0:
+def build_daily_activity(timestamps: list[int], years: int = HISTORY_YEARS) -> list[DayActivity]:
+    """Daily commit counts from Jan 1 of the covered years through the newest day.
+
+    The detail page pages by calendar year, so the stored series always starts
+    on a year boundary and is zero-filled up to the newest commit.
+    """
+    if not timestamps or years <= 0:
         return []
     newest = _day(max(timestamps))
-    end = newest + timedelta(days=6 - newest.weekday())
-    start = end - timedelta(days=weeks * 7 - 1)
+    start = date(newest.year - years + 1, 1, 1)
+    span = (newest - start).days + 1
     counts = Counter(_day(timestamp) for timestamp in timestamps)
     return [
         DayActivity(
             day=start + timedelta(days=offset),
             commits=counts.get(start + timedelta(days=offset), 0),
         )
-        for offset in range(weeks * 7)
+        for offset in range(span)
     ]
 
 

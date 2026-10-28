@@ -1,10 +1,9 @@
-"""Language classification and percentage shares, following GitHub's bar.
+"""Language classification and byte shares, following GitHub's language bar.
 
-GitHub labels every language as programming, markup, data or prose and charts
-only programming + markup, weighted by bytes. A repository full of JSON,
-YAML and Markdown therefore does not look like a "JSON project". We mirror that
-rule so the dashboard answers "what is this code base written in", not "how many
-configuration files does it carry".
+Every language keeps a category (programming / markup / data / prose). The
+overview charts only programming + markup, like GitHub, while repository detail
+shows everything so a documentation-only project is not blank. Shares are
+always computed over the set being displayed.
 """
 
 from __future__ import annotations
@@ -23,7 +22,6 @@ class LanguageCategory(StrEnum):
     PROSE = "prose"
 
 
-# scc names data formats explicitly; anything not listed defaults to programming.
 _DATA_LANGUAGES = frozenset(
     {
         "CSV",
@@ -50,7 +48,6 @@ _PROSE_LANGUAGES = frozenset(
     }
 )
 
-# Markup is charted by GitHub, so these stay visible.
 _MARKUP_LANGUAGES = frozenset(
     {
         "CSS",
@@ -83,34 +80,55 @@ def is_counted(name: str) -> bool:
     return category_of(name) in COUNTED_CATEGORIES
 
 
-def normalize(languages: Sequence[LanguageStat]) -> list[LanguageStat]:
-    """Keep chartable languages and recompute their byte shares.
+def _weight(language: LanguageStat, *, use_bytes: bool) -> int:
+    return language.bytes if use_bytes else language.code
 
-    Older snapshots were written before byte counts existed; those still fall
-    back to code lines so an upgrade does not blank existing dashboards.
-    """
-    counted = [language for language in languages if is_counted(language.name)]
-    if not counted:
+
+def _with_shares(languages: Sequence[LanguageStat]) -> list[LanguageStat]:
+    if not languages:
         return []
-
-    use_bytes = any(language.bytes > 0 for language in counted)
-    weights = [language.bytes if use_bytes else language.code for language in counted]
-    total = sum(weights)
+    use_bytes = any(language.bytes > 0 for language in languages)
+    total = sum(_weight(language, use_bytes=use_bytes) for language in languages)
     shares = [
-        language.model_copy(update={"percent": round(weight / total * 100, 2) if total else 0.0})
-        for language, weight in zip(counted, weights, strict=True)
+        language.model_copy(
+            update={
+                "category": category_of(language.name).value,
+                "percent": round(_weight(language, use_bytes=use_bytes) / total * 100, 2)
+                if total
+                else 0.0,
+            }
+        )
+        for language in languages
     ]
     shares.sort(key=lambda language: (-language.percent, language.name))
     return shares
 
 
+def annotate(languages: Sequence[LanguageStat]) -> list[LanguageStat]:
+    """All languages with categories and byte shares over the full set."""
+    return _with_shares(languages)
+
+
+def counted(languages: Sequence[LanguageStat]) -> list[LanguageStat]:
+    """Programming + markup only, re-shared to sum to 100%."""
+    return _with_shares([language for language in languages if is_counted(language.name)])
+
+
+def summarize(languages: Sequence[LanguageStat]) -> tuple[int, int, int]:
+    """(code lines, documentation lines, files) using the charted code set."""
+    code = sum(language.code for language in languages if is_counted(language.name))
+    docs = sum(language.code for language in languages if not is_counted(language.name))
+    files = sum(language.files for language in languages)
+    return code, docs, files
+
+
 def encode_many(languages: Sequence[LanguageStat]) -> str:
     return json.dumps(
-        [language.model_dump(mode="json") for language in languages],
+        [language.model_dump(mode="json") for language in annotate(languages)],
         ensure_ascii=False,
         separators=(",", ":"),
     )
 
 
 def decode_many(payload: str) -> list[LanguageStat]:
-    return normalize([LanguageStat.model_validate(item) for item in json.loads(payload)])
+    return annotate([LanguageStat.model_validate(item) for item in json.loads(payload)])

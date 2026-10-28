@@ -10,11 +10,13 @@ from igitdeck.models.repo import (
     Platform,
     RepoIdentity,
     RepoSource,
+    RepoStats,
     TrendPoint,
 )
 from igitdeck.repositories.trends import TrendRepository
 from igitdeck.services.container import Container
 from igitdeck.services.trends import (
+    MIN_ACTIVITY_DAYS,
     TrendService,
     build_contributors,
     build_daily_activity,
@@ -200,21 +202,32 @@ def test_truncated_history_keeps_absolute_line_counts(
     assert stored.contributors
 
 
-def test_build_daily_activity_counts_days_ending_on_the_newest_week() -> None:
+def test_build_daily_activity_spans_calendar_years() -> None:
     base = to_epoch(datetime(2026, 10, 7, tzinfo=UTC))  # Wednesday
-    timestamps = [base, base + 86_400, base - 7 * 86_400, base - 14 * 86_400]
+    timestamps = [base, base - 86_400, base - 7 * 86_400, base - 14 * 86_400]
 
-    days = build_daily_activity(timestamps, weeks=4)
+    days = build_daily_activity(timestamps, years=2)
 
-    assert len(days) == 28
-    assert days[0].day == date(2026, 9, 14)
-    assert days[-1].day == date(2026, 10, 11)
+    assert days[0].day == date(2025, 1, 1)
+    assert days[-1].day == date(2026, 10, 7)
+    assert len(days) == (date(2026, 10, 7) - date(2025, 1, 1)).days + 1
     by_day = {entry.day: entry.commits for entry in days}
     assert by_day[date(2026, 10, 7)] == 1
-    assert by_day[date(2026, 10, 8)] == 1
+    assert by_day[date(2026, 10, 6)] == 1
     assert by_day[date(2026, 9, 30)] == 1
     assert by_day[date(2026, 9, 23)] == 1
+    assert by_day[date(2025, 1, 2)] == 0
     assert days[0].commits == 0
+
+
+def test_build_daily_activity_defaults_to_the_history_window() -> None:
+    base = to_epoch(datetime(2026, 10, 7, tzinfo=UTC))
+
+    days = build_daily_activity([base])
+
+    assert days[0].day == date(2023, 1, 1)
+    assert days[-1].day == date(2026, 10, 7)
+    assert len(days) >= MIN_ACTIVITY_DAYS
 
 
 def test_build_month_churn_buckets_added_and_deleted() -> None:
@@ -294,7 +307,56 @@ def test_dashboard_aggregates_daily_activity(container: Container) -> None:
 
     overview = container.dashboard.overview()
     assert sum(entry.commits for entry in overview.activity) == 4
+    assert len(overview.activity) == 364
     assert overview.activity[-1].day.weekday() == 6
+
+
+def test_catalog_detail_activity_and_no_sync_runs(container: Container, make_git_repo, git) -> None:
+    source = make_git_repo({"a.txt": "one\ntwo\n"})
+    commit = git(source, "rev-parse", "HEAD").strip()
+    bare = container.paths.bare_repo(Platform.GITHUB, "local", "detail-activity")
+    bare.parent.mkdir(parents=True, exist_ok=True)
+    container.sync.git.clone_mirror(source.as_uri(), bare)
+
+    record = container.repos.add(
+        RepoIdentity(
+            platform=Platform.GITHUB,
+            owner="local",
+            name="detail-activity",
+            url=source.as_uri(),
+        ),
+        source=RepoSource.MANUAL,
+        description=None,
+        added_at=datetime.now(UTC),
+    )
+    container.stats.add_snapshot(
+        record.id,
+        RepoStats(
+            captured_at=datetime.now(UTC),
+            commit_sha=commit,
+            code_lines=2,
+            comment_lines=0,
+            blank_lines=0,
+            file_count=1,
+            disk_bytes=0,
+        ),
+    )
+    container.repos.mark_success(
+        record.id,
+        synced_at=datetime.now(UTC),
+        default_branch="main",
+        commit_sha=commit,
+        last_commit_at=datetime.now(UTC),
+        readme_path=None,
+        readme_text=None,
+        description=None,
+    )
+
+    detail = container.catalog.detail(record.id)
+
+    assert detail.activity
+    assert len(detail.activity) >= MIN_ACTIVITY_DAYS
+    assert "sync_runs" not in detail.model_dump()
 
 
 def test_startup_warmup_rebuilds_missing_insights(container: Container, make_git_repo, git) -> None:

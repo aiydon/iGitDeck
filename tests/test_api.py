@@ -120,7 +120,7 @@ def test_api_lifecycle(settings: Settings) -> None:
         assert detail_body["repo"]["description"] == "Command line toolkit"
         assert detail_body["readme"] is None
         assert detail_body["trend"] == []
-        assert detail_body["sync_runs"] == []
+        assert "sync_runs" not in detail_body
 
         filters = client.get("/api/filters").json()
         assert {facet["value"]: facet["count"] for facet in filters["platforms"]} == {
@@ -146,6 +146,11 @@ def test_api_lifecycle(settings: Settings) -> None:
         assert payload["next_sync_at"] is None
         assert payload["due_now"] == 2
         assert payload["total_code_lines"] == 0
+        assert isinstance(payload["upcoming"], list)
+        assert len(payload["upcoming"]) <= 3
+        assert all("next_sync_at" in item for item in payload["upcoming"])
+        upcoming_times = [item["next_sync_at"] for item in payload["upcoming"]]
+        assert upcoming_times == sorted(upcoming_times)
 
         runs = client.get("/api/syncs")
         assert runs.status_code == 200
@@ -285,6 +290,9 @@ def test_status_reports_next_sync_and_recent_activity(settings: Settings) -> Non
     assert 45 <= remaining <= 51
     assert payload.recent_activity[0].full_name == "local/scheduled"
     assert payload.recent_activity[0].status.value == "ready"
+    assert len(payload.upcoming) == 1
+    assert payload.upcoming[0].full_name == "local/scheduled"
+    assert payload.upcoming[0].next_sync_at == payload.next_sync_at
 
 
 def test_detail_hides_next_sync_when_scheduling_is_off(

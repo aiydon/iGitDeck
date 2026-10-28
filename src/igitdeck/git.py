@@ -9,11 +9,13 @@ import threading
 import time
 from collections import deque
 from collections.abc import Callable
+from datetime import datetime
 from pathlib import Path
 
 from pydantic import BaseModel, computed_field
 
 from igitdeck.clock import from_epoch
+from igitdeck.models.branches import BranchInfo
 from igitdeck.models.repo import CommitSummary
 
 ProgressCallback = Callable[[str, int], None]
@@ -416,6 +418,64 @@ class GitClient:
                 current["deletions"] = int(current["deletions"]) + int(removed)
 
         return [CommitSummary.model_validate(draft) for draft in drafts]
+
+    def branches(
+        self, bare: Path, default_branch: str, limit: int = 30
+    ) -> tuple[list[BranchInfo], int]:
+        """Branches newest-first, with ahead/behind relative to `default_branch`."""
+        result = self._run(
+            [
+                "--git-dir",
+                str(bare),
+                "for-each-ref",
+                "--sort=-committerdate",
+                # A literal 0x1F separator: for-each-ref does not expand %x1f.
+                "--format=%(refname:short)\x1f%(objectname)\x1f"
+                "%(committerdate:unix)\x1f%(authorname)\x1f%(subject)",
+                "refs/heads/",
+            ]
+        )
+        parsed: list[tuple[str, str, datetime, str, str]] = []
+        for line in result.stdout.splitlines():
+            fields = line.split("\x1f", 4)
+            if len(fields) != 5:
+                continue
+            name, sha, timestamp, author, message = fields
+            if not name or not sha or not timestamp.isdigit():
+                continue
+            committed_at = from_epoch(int(timestamp))
+            if committed_at is None:
+                continue
+            parsed.append((name, sha, committed_at, author, message))
+
+        kept = parsed[: max(0, limit)]
+        branches: list[BranchInfo] = []
+        for name, sha, committed_at, author, message in kept:
+            is_default = name == default_branch
+            ahead = behind = 0
+            if not is_default:
+                try:
+                    ahead = self._count_commits(bare, f"{default_branch}..{name}")
+                    behind = self._count_commits(bare, f"{name}..{default_branch}")
+                except GitCommandError:
+                    continue
+            branches.append(
+                BranchInfo(
+                    name=name,
+                    commit_sha=sha,
+                    committed_at=committed_at,
+                    author=author,
+                    message=message,
+                    is_default=is_default,
+                    ahead=ahead,
+                    behind=behind,
+                )
+            )
+        return branches, len(parsed)
+
+    def _count_commits(self, bare: Path, revision_range: str) -> int:
+        output = self._run(["--git-dir", str(bare), "rev-list", "--count", revision_range]).stdout
+        return int(output) if output.isdigit() else 0
 
     def tracked_line_count(self, bare: Path, branch: str) -> int:
         """Lines in tracked text files at `branch`, using git's binary filter.

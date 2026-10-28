@@ -72,21 +72,19 @@ async def _read_limited_body(request: Request, limit: int) -> bytes:
 
 
 @router.get(
-    f"{GIT_HTTP_PREFIX}/{{platform}}/{{owner}}/{{repo}}/info/refs",
+    f"{GIT_HTTP_PREFIX}/{{platform}}/{{project:path}}/info/refs",
     include_in_schema=False,
 )
 async def info_refs(
     request: Request,
     platform: str,
-    owner: str,
-    repo: str,
+    project: str,
     service: GitHttpDep,
 ) -> GitStreamingResponse:
     result = await service.handle(
         method="GET",
         platform=platform,
-        owner=owner,
-        repo=repo,
+        project=project,
         operation="info/refs",
         query_string=request.url.query,
         content_type=request.headers.get("content-type"),
@@ -98,14 +96,13 @@ async def info_refs(
 
 
 @router.post(
-    f"{GIT_HTTP_PREFIX}/{{platform}}/{{owner}}/{{repo}}/git-upload-pack",
+    f"{GIT_HTTP_PREFIX}/{{platform}}/{{project:path}}/git-upload-pack",
     include_in_schema=False,
 )
 async def upload_pack(
     request: Request,
     platform: str,
-    owner: str,
-    repo: str,
+    project: str,
     service: GitHttpDep,
     container: ContainerDep,
 ) -> GitStreamingResponse:
@@ -113,8 +110,7 @@ async def upload_pack(
     result = await service.handle(
         method="POST",
         platform=platform,
-        owner=owner,
-        repo=repo,
+        project=project,
         operation="git-upload-pack",
         query_string=request.url.query,
         content_type=request.headers.get("content-type"),
