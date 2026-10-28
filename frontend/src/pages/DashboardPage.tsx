@@ -159,6 +159,7 @@ export function DashboardPage() {
             <ActivityHeatmap
               activity={data.activity ?? []}
               ariaLabel="所有镜像仓库的每日提交活跃度"
+              paginated={false}
             />
           </section>
 

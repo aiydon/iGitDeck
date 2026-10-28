@@ -47,6 +47,7 @@ interface YearGrid {
   cells: (YearCell | null)[];
   months: MonthLabel[];
   total: number;
+  weeks: number;
 }
 
 /**
@@ -89,17 +90,54 @@ function buildYearGrid(year: number, commitsByDay: Map<string, number>): YearGri
     span: (starts[index + 1]?.week ?? WEEKS) - start.week,
   }));
 
-  return { cells, months, total };
+  return { cells, months, total, weeks: WEEKS };
+}
+
+/**
+ * Rolling window (overview): lay the returned days out from the first weekday
+ * into whole weeks. No year switch and no padding beyond that.
+ */
+function buildRollingGrid(activity: DayActivity[]): YearGrid {
+  const first = new Date(`${activity[0].day}T00:00:00Z`);
+  const leading = first.getUTCDay();
+  const weeks = Math.ceil((activity.length + leading) / 7);
+  const cells: (YearCell | null)[] = Array.from({ length: weeks * ROWS }, () => null);
+  let total = 0;
+  activity.forEach((entry, index) => {
+    cells[index + leading] = { day: entry.day, commits: entry.commits };
+    total += entry.commits;
+  });
+
+  const starts: { week: number; label: string }[] = [];
+  let lastMonth = -1;
+  cells.forEach((cell, index) => {
+    if (!cell) return;
+    const month = new Date(`${cell.day}T00:00:00Z`).getUTCMonth();
+    if (month === lastMonth) return;
+    lastMonth = month;
+    const week = Math.floor(index / 7);
+    if (starts.at(-1)?.week === week) return;
+    starts.push({ week, label: `${month + 1}月` });
+  });
+  const months = starts.map((start, index) => ({
+    ...start,
+    span: (starts[index + 1]?.week ?? weeks) - start.week,
+  }));
+
+  return { cells, months, total, weeks };
 }
 
 interface ActivityHeatmapProps {
   activity: DayActivity[];
   ariaLabel?: string;
+  /** Year switcher + 53x7 calendar grid (detail). Off = rolling window. */
+  paginated?: boolean;
 }
 
 export function ActivityHeatmap({
   activity,
   ariaLabel = "每日提交活跃度",
+  paginated = true,
 }: ActivityHeatmapProps) {
   const [selectedYear, setSelectedYear] = useState<number | null>(null);
 
@@ -118,6 +156,7 @@ export function ActivityHeatmap({
     selectedYear !== null && years.includes(selectedYear) ? selectedYear : (years[0] ?? null);
 
   const yearGrid = useMemo(() => {
+    if (!paginated) return buildRollingGrid(activity);
     if (activeYear === null) return null;
     const commitsByDay = new Map<string, number>();
     activity.forEach((entry) => {
@@ -126,9 +165,11 @@ export function ActivityHeatmap({
       }
     });
     return buildYearGrid(activeYear, commitsByDay);
-  }, [activity, activeYear]);
+  }, [activity, activeYear, paginated]);
 
-  const columns = { gridTemplateColumns: `repeat(${WEEKS}, minmax(0, 1fr))` };
+  const columns = {
+    gridTemplateColumns: `repeat(${yearGrid?.weeks ?? WEEKS}, minmax(0, 1fr))`,
+  };
 
   if (activity.length === 0 || !yearGrid) {
     return <p className="muted heatmap-empty">暂无可用的提交历史</p>;
@@ -136,20 +177,22 @@ export function ActivityHeatmap({
 
   return (
     <div className="heatmap">
-      <div className="heatmap-years" role="tablist" aria-label="选择年份">
-        {years.map((year) => (
-          <button
-            key={year}
-            type="button"
-            role="tab"
-            aria-selected={year === activeYear}
-            className={`heatmap-year${year === activeYear ? " active" : ""}`}
-            onClick={() => setSelectedYear(year)}
-          >
-            {year}
-          </button>
-        ))}
-      </div>
+      {paginated && (
+        <div className="heatmap-years" role="tablist" aria-label="选择年份">
+          {years.map((year) => (
+            <button
+              key={year}
+              type="button"
+              role="tab"
+              aria-selected={year === activeYear}
+              className={`heatmap-year${year === activeYear ? " active" : ""}`}
+              onClick={() => setSelectedYear(year)}
+            >
+              {year}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="heatmap-months" style={columns} aria-hidden="true">
         {yearGrid.months.map((month) => (
           <span
@@ -164,7 +207,7 @@ export function ActivityHeatmap({
         className="heatmap-grid"
         style={columns}
         role="img"
-        aria-label={`${ariaLabel}，${activeYear} 年共 ${yearGrid.total} 次提交`}
+        aria-label={`${ariaLabel}，共 ${yearGrid.total} 次提交`}
       >
         {yearGrid.cells.map((cell, index) => {
           if (!cell) {
@@ -177,7 +220,11 @@ export function ActivityHeatmap({
             );
           }
           const edge =
-            index < 7 ? " edge-left" : index >= (WEEKS - 1) * ROWS ? " edge-right" : "";
+            index < 7
+              ? " edge-left"
+              : index >= (yearGrid.weeks - 1) * ROWS
+                ? " edge-right"
+                : "";
           return (
             <span
               key={cell.day}

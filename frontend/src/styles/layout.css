@@ -247,3 +247,31 @@
     padding: 7px 9px;
   }
 }
+
+.sidebar-upcoming li {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-bottom: 5px;
+}
+
+.upcoming-track {
+  display: block;
+  height: 2px;
+  margin: 0 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.upcoming-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #78d09a;
+  transition: width 0.6s ease;
+}
+
+.upcoming-fill.due {
+  background: #e5b365;
+}

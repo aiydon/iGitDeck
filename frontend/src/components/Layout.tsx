@@ -153,9 +153,17 @@ export function Layout() {
           {upcoming.length > 0 && (
             <ul className="sidebar-upcoming">
               {upcoming.slice(0, 3).map((repo) => {
-                const due =
-                  !repo.next_sync_at ||
-                  new Date(repo.next_sync_at).getTime() <= now;
+                const dueAt = repo.next_sync_at
+                  ? new Date(repo.next_sync_at).getTime()
+                  : null;
+                const lastAt = repo.last_attempt_at
+                  ? new Date(repo.last_attempt_at).getTime()
+                  : null;
+                const due = dueAt === null || dueAt <= now;
+                const elapsed =
+                  dueAt !== null && lastAt !== null && dueAt > lastAt
+                    ? Math.min(100, Math.max(0, ((now - lastAt) / (dueAt - lastAt)) * 100))
+                    : 100;
                 return (
                   <li key={repo.id}>
                     <Link
@@ -165,11 +173,15 @@ export function Layout() {
                     >
                       <span>{repo.full_name}</span>
                       <span className={`upcoming-time${due ? " upcoming-due" : ""}`}>
-                        {due
-                          ? "即将开始"
-                          : relativeTime(repo.next_sync_at, now)}
+                        {due ? "即将开始" : relativeTime(repo.next_sync_at, now)}
                       </span>
                     </Link>
+                    <span className="upcoming-track" aria-hidden="true">
+                      <span
+                        className={`upcoming-fill${due ? " due" : ""}`}
+                        style={{ width: `${elapsed}%` }}
+                      />
+                    </span>
                   </li>
                 );
               })}

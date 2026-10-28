@@ -299,9 +299,15 @@ export function RepoDetailPage() {
         <>
           <section className="stat-grid">
             <StatCard
-              label="代码行"
-              value={stats ? compactNumber(stats.code_lines) : "—"}
-              detail={stats ? `${formatNumber(stats.code_lines)} 行代码` : "等待首次同步"}
+              label="文本行"
+              value={stats ? compactNumber(stats.text_lines) : "—"}
+              detail={
+                stats
+                  ? `${formatNumber(stats.code_lines)} 代码 · ${formatNumber(
+                      stats.doc_lines,
+                    )} 文档/配置`
+                  : "等待首次同步"
+              }
               icon={<CodeIcon size={19} />}
               tone="accent"
             />

@@ -1263,110 +1263,106 @@ a.lang-legend-name:hover {
   font-size: 11.5px;
 }
 
-.network-body {
-  display: flex;
-  gap: 12px;
-  min-width: 0;
+.network-scroll {
   margin-top: 16px;
-}
-
-.network-labels {
-  display: flex;
-  flex: 0 0 156px;
-  flex-direction: column;
-  min-width: 0;
-  padding-top: 12px;
-}
-
-.network-row-label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  padding-right: 9px;
-  overflow: hidden;
-  border-right: 1px solid var(--border);
-  color: var(--muted);
-  font-family: var(--mono);
-  font-size: 11px;
-  white-space: nowrap;
-}
-
-.network-row-label > span:first-child {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.network-row-label.is-default {
-  color: var(--accent);
-  font-weight: 600;
-}
-
-.network-default-chip {
-  flex: 0 0 auto;
-  padding: 1px 5px;
-  border-radius: 999px;
-  background: var(--accent-soft);
-  color: var(--accent);
-  font-family: var(--sans);
-  font-size: 9px;
-  font-weight: 600;
+  overflow-x: auto;
+  padding-bottom: 6px;
 }
 
 .network-canvas {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow-x: auto;
-  padding-bottom: 2px;
-}
-
-.network-canvas-inner {
   position: relative;
+  min-width: 100%;
 }
 
-.branch-svg {
+.network-svg {
   display: block;
   width: 100%;
   height: auto;
   overflow: visible;
 }
 
-.network-row-line {
-  stroke: color-mix(in srgb, var(--muted) 42%, transparent);
-  stroke-width: 1.5;
+.network-column-label {
+  fill: var(--muted);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.network-column-label.is-default {
+  fill: var(--accent);
+  font-weight: 600;
+}
+
+.network-default-chip rect {
+  fill: var(--accent-soft);
+}
+
+.network-default-chip text {
+  fill: var(--accent);
+  font-family: var(--sans);
+  font-size: 8.5px;
+  font-weight: 600;
+}
+
+.network-lane {
+  stroke: color-mix(in srgb, var(--muted) 24%, transparent);
+  stroke-width: 1.4;
   stroke-linecap: round;
 }
 
-.network-row-line.is-default {
-  stroke: color-mix(in srgb, var(--accent) 72%, transparent);
+.network-lane.is-default {
+  stroke: color-mix(in srgb, var(--accent) 55%, transparent);
+  stroke-width: 1.8;
 }
 
 .network-edge {
-  stroke: color-mix(in srgb, var(--muted) 36%, transparent);
-  stroke-width: 1;
+  fill: none;
+  stroke: color-mix(in srgb, var(--muted) 40%, transparent);
+  stroke-width: 1.1;
   stroke-linecap: round;
 }
 
 .network-dot {
   fill: var(--muted);
   stroke: var(--surface);
-  stroke-width: 1;
-  cursor: pointer;
+  stroke-width: 1.2;
+  pointer-events: none;
 }
 
 .network-dot.is-default {
   fill: var(--accent);
 }
 
-.network-dot:hover {
+.network-dot.is-hovered {
   fill: var(--fg);
   stroke: var(--accent-soft);
+  stroke-width: 2;
 }
 
-.network-dot.is-default:hover {
+.network-dot.is-default.is-hovered {
   fill: var(--accent);
-  stroke: var(--accent-soft);
+}
+
+.network-dot-hit {
+  fill: transparent;
+  cursor: pointer;
+  pointer-events: all;
+}
+
+.network-time-grid {
+  stroke: color-mix(in srgb, var(--border) 70%, transparent);
+  stroke-width: 1;
+  stroke-dasharray: 2 6;
+}
+
+.network-axis-tick {
+  stroke: color-mix(in srgb, var(--muted) 45%, transparent);
+  stroke-width: 1;
+}
+
+.network-axis-label {
+  fill: var(--faint);
+  font-family: var(--mono);
+  font-size: 9.5px;
 }
 
 .network-tooltip {
@@ -1375,7 +1371,8 @@ a.lang-legend-name:hover {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  max-width: 240px;
+  width: max-content;
+  max-width: min(240px, calc(100% - 16px));
   padding: 7px 9px;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -1384,11 +1381,6 @@ a.lang-legend-name:hover {
   font-size: 11px;
   line-height: 1.4;
   pointer-events: none;
-  transform: translate(-50%, calc(-100% - 8px));
-}
-
-.network-tooltip.below {
-  transform: translate(-50%, 12px);
 }
 
 .network-tooltip strong {
@@ -1423,17 +1415,12 @@ a.lang-legend-name:hover {
 }
 
 @media (max-width: 760px) {
-  .network-labels {
-    flex-basis: 108px;
+  .network-column-label {
+    font-size: 10px;
   }
 
-  .network-row-label {
-    font-size: 10.5px;
-  }
-
-  .network-default-chip {
-    padding: 0 4px;
-    font-size: 8.5px;
+  .network-axis-label {
+    font-size: 9px;
   }
 }
 

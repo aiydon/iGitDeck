@@ -71,16 +71,40 @@ function buildData(
   depth = 0,
   rootIndex = 0,
 ): TreemapDatum[] {
-  return nodes.map((node, index) => {
+  const weightOf = (node: TreeNode) =>
+    weighting === "size" ? node.size : node.files;
+  const sorted = [...nodes].sort((left, right) => weightOf(right) - weightOf(left));
+  const total = sorted.reduce((sum, node) => sum + weightOf(node), 0);
+  // Tiny directories otherwise paint a stray square a few pixels wide.
+  const threshold = Math.max(1, total * 0.003);
+  const kept = sorted.filter((node) => weightOf(node) >= threshold);
+  const rest = sorted.filter((node) => weightOf(node) < threshold);
+
+  const rows: (TreeNode & { synthetic?: boolean })[] = [...kept];
+  if (rest.length > 0) {
+    rows.push({
+      name: `其他 ${rest.length} 项`,
+      path: "",
+      synthetic: true,
+      size: rest.reduce((sum, node) => sum + node.size, 0),
+      files: rest.reduce((sum, node) => sum + node.files, 0),
+      children: [],
+    });
+  }
+
+  return rows.map((node, index) => {
     const family = depth === 0 ? index : rootIndex;
+    const synthetic = "synthetic" in node && node.synthetic;
     return {
-      id: node.path,
+      id: node.path || `rest-${depth}-${rootIndex}`,
       name: node.name,
-      value: weighting === "size" ? node.size : node.files,
+      value: weightOf(node),
       path: node.path,
       size: node.size,
       files: node.files,
-      itemStyle: { color: familyColor(family, depth, index) },
+      itemStyle: {
+        color: synthetic ? "rgba(148, 158, 148, 0.45)" : familyColor(family, depth, index),
+      },
       children:
         (node.children ?? []).length > 0
           ? buildData(node.children ?? [], weighting, depth + 1, family)
@@ -148,24 +172,12 @@ function treemapOption(nodes: TreeNode[], weighting: Weighting): EChartsOption {
         left: 0,
         right: 0,
         top: 0,
-        bottom: 26,
+        bottom: 0,
         roam: false,
         nodeClick: "zoomToNode",
         leafDepth: 2,
-        breadcrumb: {
-          show: true,
-          bottom: 0,
-          height: 22,
-          itemStyle: {
-            color: "rgba(24,32,26,0.78)",
-            borderColor: "rgba(255,255,255,0.16)",
-            borderWidth: 1,
-            textStyle: { color: "#eef2e9", fontSize: 11 },
-          },
-          emphasis: {
-            itemStyle: { color: "rgba(58,74,62,0.92)" },
-          },
-        },
+        // ECharts draws a root breadcrumb chip by default; it looks like a stray cell.
+        breadcrumb: { show: false },
         upperLabel: {
           show: true,
           height: 22,
@@ -221,6 +233,8 @@ interface TreeMapPanelProps {
 export function TreeMapPanel({ repoId }: TreeMapPanelProps) {
   const { data, loading, error, refresh } = useRequest(() => api.tree(repoId), [repoId]);
   const [weighting, setWeighting] = useState<Weighting>("size");
+  // Remounting the chart is the simplest reliable way to leave a drilled node.
+  const [viewToken, setViewToken] = useState(0);
 
   const option = useMemo(
     () => (data ? treemapOption(data.nodes ?? [], weighting) : null),
@@ -251,6 +265,14 @@ export function TreeMapPanel({ repoId }: TreeMapPanelProps) {
                 {item.label}
               </button>
             ))}
+            <button
+              type="button"
+              className="treemap-reset"
+              onClick={() => setViewToken((token) => token + 1)}
+              title="回到顶层目录"
+            >
+              回到顶层
+            </button>
           </div>
         )}
       </div>
@@ -296,7 +318,12 @@ export function TreeMapPanel({ repoId }: TreeMapPanelProps) {
         />
       ) : option ? (
         <div className="treemap-chart">
-          <EChart option={option} height={460} ariaLabel="仓库目录体积矩形树图" />
+          <EChart
+            key={viewToken}
+            option={option}
+            height={460}
+            ariaLabel="仓库目录体积矩形树图"
+          />
         </div>
       ) : null}
     </section>
