@@ -50,7 +50,7 @@ make run       # uvicorn，监听 .env 中的 IGD_HOST:IGD_PORT
 
 ### 添加与同步
 
-页面右上角或侧栏的「添加仓库」支持：
+页面右上角或侧栏的「添加仓库」支持**一行一个地址批量粘贴**（最多 200 条，空行忽略），提交后逐条显示新增、已存在与失败原因。单条地址支持：
 
 - `https://github.com/owner/repo`
 - `git@github.com:owner/repo.git`
@@ -228,7 +228,7 @@ data/
 | `IGD_GIT_HTTP_TIMEOUT_SECONDS` | `1800` | upload-pack 超时 |
 | `IGD_GIT_HTTP_MAX_REQUEST_BYTES` | `8388608` | upload-pack 请求体（含解压后）上限，超出返回 413 |
 | `IGD_SCC_BINARY` / `IGD_SCC_TIMEOUT_SECONDS` | `scc` / `600` | scc 路径与超时 |
-| `IGD_GIT_INSIGHTS_MAX_COMMITS` | `100000` | 超过该提交数时跳过 git 趋势/活跃度扫描，并在趋势页说明原因 |
+| `IGD_GIT_INSIGHTS_MAX_COMMITS` | `100000` | 超过该提交数时只扫描最近 N 个提交，趋势图截断并在页面标注 |
 | `IGD_FETCH_METADATA` | `true` | 手动添加时通过 GitHub API 补全描述（失败不影响添加） |
 | `IGD_CRAWLER_API_BASE_URL` | `http://127.0.0.1:8000` | 爬虫调用主进程的地址 |
 | `IGD_CRAWLER_LANGUAGES` / `IGD_CRAWLER_SINCE` | 空 / `daily` | Trending 语言与时间范围 |
@@ -245,6 +245,7 @@ data/
 | `GET` | `/api/syncs` | 全局同步记录（按状态筛选、分页） |
 | `GET` | `/api/repos` | 列表、FTS 搜索、筛选、排序、分页 |
 | `POST` | `/api/repos` | 添加仓库（`url`, 可选 `source`, `description`） |
+| `POST` | `/api/repos/batch` | 批量添加（`urls` 数组，最多 200 条），逐条返回新增/已存在/失败 |
 | `GET` | `/api/repos/{id}` | 详情：最新统计、README、趋势、同步历史 |
 | `POST` | `/api/repos/{id}/sync` | 手动同步（202，重复触发返回 `queued=false`） |
 | `GET` | `/api/repos/{id}/raw/{path}` | 工作区内 raw 文件（README 图片/链接） |
@@ -317,7 +318,7 @@ make hooks       # 安装可选 commit-msg hook
 - GitLab 子组仓库（路径超过 `group/repo` 两段）暂不支持。
 - README 仅支持 Markdown 渲染；`.rst` / `.txt` 以纯文本显示。外部图片依赖出网访问。
 - scc 解析按 v4 JSON 输出编写；如需其他版本，请设置 `IGD_SCC_BINARY` 并确认输出字段。
-- 行数趋势统计的是 git 跟踪的文本行（含文档、配置），不等于 scc 代码行；提交数超过 `IGD_GIT_INSIGHTS_MAX_COMMITS`（默认 10 万）时跳过 git 洞察，趋势页会显示具体原因。
+- 行数趋势统计的是 git 跟踪的文本行（含文档、配置），不等于 scc 代码行；提交数超过 `IGD_GIT_INSIGHTS_MAX_COMMITS`（默认 10 万）时只扫描最近 N 个提交，趋势页会标注截断，并用 HEAD 行数锚定绝对数值。
 - 提交活跃度统计全部提交（含 merge）；行数趋势与增删按非 merge 提交的 diff 计算，末点以镜像 HEAD 补齐。
 - 超大仓库（GB 级）clone 可达数十分钟，期间列表页处于“同步中”，属预期；超过最长同步时间会被判定失败并按退避重试。
 - 可选功能（提交热力图、Top contributors、文件树、语法高亮、License 检测、RSS 等）未实现。
