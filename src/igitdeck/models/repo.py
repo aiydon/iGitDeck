@@ -209,6 +209,7 @@ class CommitSummary(BaseModel):
     committed_at: datetime
     author: str
     message: str
+    body: str | None = None
     files_changed: int = Field(ge=0)
     insertions: int = Field(ge=0)
     deletions: int = Field(ge=0)

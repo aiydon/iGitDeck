@@ -5,7 +5,13 @@ from datetime import UTC, datetime
 import pytest
 
 import igitdeck.repositories.sync_runs as sync_runs_module
-from igitdeck.models.repo import Platform, RepoIdentity, RepoSource, RepoStats
+from igitdeck.models.repo import (
+    LanguageStat,
+    Platform,
+    RepoIdentity,
+    RepoSource,
+    RepoStats,
+)
 from igitdeck.models.sync import SyncQuery, SyncRunStatus, SyncTrigger
 from igitdeck.services.container import Container
 
@@ -104,3 +110,40 @@ def test_sync_runs_are_capped_per_repository(
     assert [run.message for run in page] == ["run 4", "run 3"]
     failed, failed_total = container.sync_runs.page(SyncQuery(status=SyncRunStatus.FAILED))
     assert (failed, failed_total) == ([], 0)
+
+
+def test_language_totals_merge_repositories_sharing_a_language(
+    container: Container,
+) -> None:
+    def snapshot(code: int) -> RepoStats:
+        return RepoStats(
+            captured_at=datetime.now(UTC),
+            commit_sha="sha",
+            code_lines=code,
+            comment_lines=0,
+            blank_lines=0,
+            file_count=1,
+            disk_bytes=1,
+            languages=[
+                LanguageStat(name="Python", code=code, comment=0, blank=0, files=1, percent=100.0)
+            ],
+        )
+
+    for name, code in (("alpha", 100), ("beta", 50)):
+        record = add_repo(container, name)
+        container.repos.mark_success(
+            record.id,
+            synced_at=datetime.now(UTC),
+            default_branch="main",
+            commit_sha="sha",
+            last_commit_at=datetime.now(UTC),
+            readme_path=None,
+            readme_text=None,
+            description=None,
+        )
+        container.stats.add_snapshot(record.id, snapshot(code))
+
+    totals = container.stats.language_totals()
+    assert [(item.name, item.code_lines, item.repos) for item in totals] == [("Python", 150, 2)]
+    overview = container.dashboard.overview()
+    assert [(item.name, item.percent) for item in overview.languages] == [("Python", 100.0)]

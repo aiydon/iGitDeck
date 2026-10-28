@@ -40,6 +40,7 @@ class SyncProgress(BaseModel):
 
 class ActiveSync(SyncProgress):
     repo_id: int
+    full_name: str
 
 
 class ProgressSnapshot(BaseModel):

@@ -236,6 +236,17 @@ class RepoRepository:
             connection.execute("DELETE FROM repos WHERE id = ?", (repo_id,))
         return _repo_record(row)
 
+    def names_by_ids(self, repo_ids: list[int]) -> dict[int, str]:
+        if not repo_ids:
+            return {}
+        placeholders = ", ".join("?" for _ in repo_ids)
+        with self.db.connection() as connection:
+            rows = connection.execute(
+                f"SELECT id, owner, name FROM repos WHERE id IN ({placeholders})",
+                repo_ids,
+            ).fetchall()
+        return {row["id"]: f"{row['owner']}/{row['name']}" for row in rows}
+
     def failed_repo_ids(self) -> list[int]:
         with self.db.connection() as connection:
             rows = connection.execute(

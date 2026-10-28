@@ -14,7 +14,12 @@ def test_recent_commits_include_message_author_and_line_stats(
     (source / "a.txt").write_text("one\ntwo\nthree\n", encoding="utf-8")
     (source / "b.txt").write_text("new\n", encoding="utf-8")
     git(source, "add", ".")
-    git(source, "commit", "-qm", "add three and b")
+    git(
+        source,
+        "commit",
+        "-qm",
+        "add three and b\n\nExplains why the file grew.\nSecond body line.",
+    )
 
     bare = tmp_path / "mirror.git"
     client = GitClient(timeout_seconds=30)
@@ -30,6 +35,8 @@ def test_recent_commits_include_message_author_and_line_stats(
     assert latest.insertions == 2
     assert latest.deletions == 0
     assert latest.is_merge is False
+    assert latest.body == "Explains why the file grew.\nSecond body line."
+    assert commits[1].body is None
     assert commits[1].files_changed == 1
 
 

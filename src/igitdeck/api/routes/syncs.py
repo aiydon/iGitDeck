@@ -22,10 +22,16 @@ router = APIRouter(prefix="/api/syncs", tags=["sync"])
 
 @router.get("/progress", response_model=ProgressSnapshot)
 def active_progress(container: ContainerDep) -> ProgressSnapshot:
+    snapshot = container.progress.snapshot()
+    names = container.repos.names_by_ids(list(snapshot))
     return ProgressSnapshot(
         items=[
-            ActiveSync(repo_id=repo_id, **progress.model_dump())
-            for repo_id, progress in container.progress.snapshot().items()
+            ActiveSync(
+                repo_id=repo_id,
+                full_name=names.get(repo_id, f"#{repo_id}"),
+                **progress.model_dump(),
+            )
+            for repo_id, progress in snapshot.items()
         ]
     )
 

@@ -287,7 +287,11 @@ class GitClient:
         ]
 
     def recent_commits(self, bare: Path, branch: str, limit: int = 30) -> list[CommitSummary]:
-        """Newest commits on `branch` with per-commit line statistics."""
+        """Newest commits on `branch` with per-commit statistics and body.
+
+        `-z` terminates each record with NUL, so multi-line bodies cannot be
+        confused with `--numstat` lines; both arrive as NUL-separated records.
+        """
         result = self._run(
             [
                 "--git-dir",
@@ -295,62 +299,55 @@ class GitClient:
                 "log",
                 f"-n{max(1, min(limit, 200))}",
                 "--numstat",
-                "--format=@@%H%x1f%ct%x1f%an%x1f%P%x1f%s",
+                "-z",
+                "--format=@@%H%x1f%ct%x1f%an%x1f%P%x1f%s%x1f%b",
                 f"refs/heads/{branch}",
             ]
         )
-        commits: list[CommitSummary] = []
-        current: CommitSummary | None = None
-        files = insertions = deletions = 0
+        drafts: list[dict[str, object]] = []
+        current: dict[str, object] | None = None
 
-        def flush() -> None:
-            nonlocal current
-            if current is None:
-                return
-            commits.append(
-                current.model_copy(
-                    update={
-                        "files_changed": files,
-                        "insertions": insertions,
-                        "deletions": deletions,
-                    }
-                )
-            )
-            current = None
-
-        for line in result.stdout.splitlines():
-            if line.startswith("@@"):
-                flush()
-                files = insertions = deletions = 0
-                fields = line[2:].split("\x1f", 4)
-                if len(fields) != 5:
+        for segment in result.stdout.split("\x00"):
+            record = segment.lstrip("\n")
+            if not record:
+                continue
+            if record.startswith("@@"):
+                fields = record[2:].split("\x1f", 5)
+                if len(fields) != 6:
+                    current = None
                     continue
-                sha, timestamp, author, parents, message = fields
+                sha, timestamp, author, parents, message, body = fields
                 committed_at = from_epoch(int(timestamp))
                 if committed_at is None:
+                    current = None
                     continue
-                current = CommitSummary(
-                    sha=sha,
-                    committed_at=committed_at,
-                    author=author,
-                    message=message,
-                    files_changed=0,
-                    insertions=0,
-                    deletions=0,
-                    is_merge=len(parents.split()) > 1,
-                )
-            elif current is not None:
-                parts = line.split("\t")
-                if len(parts) != 3:
-                    continue
-                added, removed, _ = parts
-                files += 1
-                if added.isdigit():
-                    insertions += int(added)
-                if removed.isdigit():
-                    deletions += int(removed)
-        flush()
-        return commits
+                current = {
+                    "sha": sha,
+                    "committed_at": committed_at,
+                    "author": author,
+                    "message": message,
+                    "body": body.strip() or None,
+                    "is_merge": len(parents.split()) > 1,
+                    "files_changed": 0,
+                    "insertions": 0,
+                    "deletions": 0,
+                }
+                drafts.append(current)
+                continue
+
+            if current is None:
+                continue
+            parts = record.split("\t")
+            if len(parts) != 3:
+                continue
+            added, removed, _ = parts
+            current["files_changed"] = int(current["files_changed"]) + 1
+            if added.isdigit():
+                current["insertions"] = int(current["insertions"]) + int(added)
+            if removed.isdigit():
+                current["deletions"] = int(current["deletions"]) + int(removed)
+
+        return [CommitSummary.model_validate(draft) for draft in drafts]
 
     def tracked_line_count(self, bare: Path, branch: str) -> int:
         """Lines in tracked text files at `branch`, using git's binary filter.

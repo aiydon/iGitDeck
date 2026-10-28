@@ -93,20 +93,20 @@ class StatsRepository:
             rows = connection.execute(
                 f"""
                 SELECT
-                    json_extract(lang.value, '$.name') AS name,
+                    json_extract(lang.value, '$.name') AS language,
                     sum(json_extract(lang.value, '$.code')) AS code_lines,
                     count(DISTINCT s.repo_id) AS repos
                 FROM repo_snapshots s
                 JOIN repos r ON r.id = s.repo_id AND r.commit_sha = s.commit_sha
                 JOIN ({LATEST_SNAPSHOT_IDS}) latest ON latest.id = s.id,
                      json_each(s.languages) AS lang
-                GROUP BY name
-                ORDER BY code_lines DESC, name
+                GROUP BY json_extract(lang.value, '$.name')
+                ORDER BY code_lines DESC, language
                 """
             ).fetchall()
         return [
             LanguageTotal(
-                name=row["name"],
+                name=row["language"],
                 code_lines=row["code_lines"],
                 repos=row["repos"],
             )
