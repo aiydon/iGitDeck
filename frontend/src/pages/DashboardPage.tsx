@@ -78,10 +78,6 @@ export function DashboardPage() {
 
   return (
     <>
-      <header className="page-head">
-        <h1>总览</h1>
-      </header>
-
       {data.repo_count === 0 ? (
         <EmptyState
           icon={<RepoIcon size={30} />}
@@ -116,7 +112,7 @@ export function DashboardPage() {
               icon={<DiskIcon size={19} />}
             />
             <StatCard
-              label="索引文件"
+              label="代码文件"
               value={compactNumber(data.total_files)}
               detail={`${formatNumber(data.total_files)} 个文件`}
               icon={<FileIcon size={19} />}
@@ -171,7 +167,7 @@ export function DashboardPage() {
               <div className="panel-head">
                 <div>
                   <h2>语言分布</h2>
-                  <p>scc 代码行统计</p>
+                  <p>编程与标记语言 · 按字节占比</p>
                 </div>
                 <Link className="text-link" to="/repos">
                   查看仓库

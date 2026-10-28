@@ -37,6 +37,13 @@ const KNOWN: Record<string, string> = {
   License: "#b2b2a4",
   Text: "#b2b2a4",
   "Plain Text": "#b2b2a4",
+  Lean: "#c96a4b",
+  Cuda: "#76b74f",
+  Typst: "#6aa9c4",
+  MDX: "#93a4b3",
+  GLSL: "#8f9ad6",
+  Metal: "#a48fd0",
+  CMake: "#d16a6a",
   Unknown: "#b2b2a4",
 };
 
