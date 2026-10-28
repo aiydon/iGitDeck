@@ -758,7 +758,8 @@
 }
 
 .repo-table {
-  min-width: 880px;
+  min-width: 920px;
+  table-layout: fixed;
 }
 
 .repo-table th,
@@ -794,6 +795,10 @@
   vertical-align: middle;
 }
 
+.repo-table td {
+  overflow: hidden;
+}
+
 .repo-table tbody tr {
   transition: background 0.14s ease;
 }
@@ -824,15 +829,15 @@
 }
 
 .repo-table th:nth-child(1) {
-  width: 34%;
+  width: 30%;
 }
 
 .repo-table th:nth-child(2) {
-  width: 15%;
+  width: 14%;
 }
 
 .repo-table th:nth-child(3) {
-  width: 8%;
+  width: 9%;
 }
 
 .repo-table th:nth-child(4) {
@@ -844,11 +849,11 @@
 }
 
 .repo-table th:nth-child(6) {
-  width: 9%;
+  width: 10%;
 }
 
 .repo-table th:nth-child(7) {
-  width: 112px;
+  width: 150px;
 }
 
 .repo-cell {
@@ -889,6 +894,7 @@
   display: -webkit-box;
   margin-top: 4px;
   overflow: hidden;
+  overflow-wrap: anywhere;
   color: var(--muted);
   font-size: 11.5px;
   line-height: 1.5;
@@ -897,12 +903,15 @@
 }
 
 .repo-error-line {
+  display: -webkit-box;
   margin-top: 3px;
   overflow: hidden;
+  overflow-wrap: anywhere;
   color: var(--danger);
   font-size: 10.5px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.45;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .repo-snippet {
@@ -928,7 +937,7 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 2px;
+  gap: 6px;
 }
 
 .retry-button {
@@ -1325,4 +1334,129 @@
   background: var(--warning-soft);
   color: var(--warning);
   font-size: 11.5px;
+}
+
+/* Bulk retry ------------------------------------------------------------- */
+.bulk-progress {
+  margin-bottom: 16px;
+  padding: 14px 16px;
+}
+
+.bulk-progress-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 9px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.bulk-progress-head strong {
+  color: var(--fg);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+/* Commit list ------------------------------------------------------------ */
+.commit-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--border);
+}
+
+.commit-row {
+  display: grid;
+  grid-template-columns: 74px minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 12px;
+  padding: 11px 2px;
+  border-bottom: 1px solid var(--border);
+}
+
+.commit-row:last-child {
+  border-bottom: 0;
+}
+
+.commit-sha {
+  color: var(--faint);
+  font-size: 10.5px;
+}
+
+.commit-main {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.commit-message {
+  overflow: hidden;
+  color: var(--fg-soft);
+  font-size: 12.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.commit-meta {
+  overflow: hidden;
+  color: var(--faint);
+  font-size: 10.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.commit-add {
+  color: var(--success);
+}
+
+.commit-del {
+  color: var(--danger);
+}
+
+.commit-time {
+  color: var(--faint);
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+
+.latest-commit {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 7px;
+  min-width: 0;
+  margin-top: 8px;
+  color: var(--fg-soft);
+  font-size: 11.5px;
+}
+
+.latest-commit code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.latest-commit > span:not(.muted) {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 560px) {
+  .commit-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .commit-sha {
+    display: none;
+  }
 }

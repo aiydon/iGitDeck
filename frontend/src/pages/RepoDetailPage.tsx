@@ -22,6 +22,7 @@ import {
 import { Notice } from "../components/Notice";
 import type { NoticeTone } from "../components/Notice";
 import { ActivityHeatmap } from "../components/repo/ActivityHeatmap";
+import { CommitList } from "../components/repo/CommitList";
 import { ContributorList } from "../components/repo/ContributorList";
 import { LanguagePanel } from "../components/repo/LanguagePanel";
 import { MetaPanel } from "../components/repo/MetaPanel";
@@ -38,16 +39,19 @@ import {
   formatNumber,
   rawFileHref,
   relativeTime,
+  shortSha,
 } from "../lib/format";
 import { useLiveRefresh, useRequest } from "../lib/hooks";
+import { notifyStatusChanged } from "../lib/status";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
 
-const TABS = ["overview", "readme", "trend", "sync"] as const;
+const TABS = ["overview", "readme", "commits", "trend", "sync"] as const;
 type Tab = (typeof TABS)[number];
 
 const TAB_LABELS: Record<Tab, string> = {
   overview: "概览",
   readme: "README",
+  commits: "提交",
   trend: "趋势",
   sync: "同步",
 };
@@ -157,6 +161,8 @@ export function RepoDetailPage() {
   if (!data) return null;
 
   const { repo, readme, trend, sync_runs } = data;
+  const recentCommits = data.recent_commits ?? [];
+  const latestCommit = recentCommits[0];
   const activity = data.activity ?? [];
   const churn = data.churn ?? [];
   const contributors = data.contributors ?? [];
@@ -184,6 +190,7 @@ export function RepoDetailPage() {
           : result.message ?? "该仓库正在同步",
       });
       refresh();
+      notifyStatusChanged();
       window.setTimeout(refresh, 1400);
     } catch (cause) {
       setNotice({ tone: "error", message: errorMessage(cause) });
@@ -216,6 +223,15 @@ export function RepoDetailPage() {
             {repo.name}
           </h1>
           <p className="lede">{repo.description ?? "暂无仓库描述。"}</p>
+          {latestCommit && (
+            <p className="latest-commit">
+              <code>{shortSha(latestCommit.sha)}</code>
+              <span>{latestCommit.message}</span>
+              <span className="muted">
+                {latestCommit.author} · {relativeTime(latestCommit.committed_at)}
+              </span>
+            </p>
+          )}
         </div>
         <div className="head-actions">
           <a className="button ghost" href={repo.url} target="_blank" rel="noreferrer">
@@ -348,6 +364,28 @@ export function RepoDetailPage() {
               description="仓库根目录、.github/ 或 docs/ 中的 README 会自动展示。"
               icon={<FileIcon size={28} />}
             />
+          )}
+        </section>
+      )}
+
+      {tab === "commits" && (
+        <section className="panel">
+          <div className="panel-head">
+            <div>
+              <h2>最近提交</h2>
+              <p>
+                {repo.default_branch ?? "main"} 分支 · 最近 {recentCommits.length} 个提交
+              </p>
+            </div>
+          </div>
+          {recentCommits.length === 0 ? (
+            <EmptyState
+              title="暂无提交记录"
+              description="镜像完成并确定默认分支后，这里会显示最近的提交。"
+              icon={<FileIcon size={28} />}
+            />
+          ) : (
+            <CommitList commits={recentCommits} />
           )}
         </section>
       )}

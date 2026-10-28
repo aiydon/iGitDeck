@@ -13,6 +13,7 @@ import { RepoTable } from "../components/repo/RepoTable";
 import { errorMessage } from "../lib/format";
 import { useLiveRefresh, useRequest } from "../lib/hooks";
 import { readRepoQuery, toListParams, withQueryParam } from "../lib/repoQuery";
+import { notifyStatusChanged } from "../lib/status";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
 
 interface NoticeState {
@@ -96,6 +97,7 @@ export function ReposPage() {
       message: parts.join("，") || "没有需要添加的仓库",
     });
     refreshAll();
+    notifyStatusChanged();
     window.setTimeout(refreshAll, 1500);
   }
 
@@ -110,6 +112,7 @@ export function ReposPage() {
           : result.message ?? "该仓库正在同步",
       });
       refreshAll();
+      notifyStatusChanged();
       window.setTimeout(refreshAll, 1500);
     } catch (cause) {
       setNotice({ tone: "error", message: errorMessage(cause) });

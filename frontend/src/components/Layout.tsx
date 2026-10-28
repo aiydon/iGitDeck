@@ -3,6 +3,7 @@ import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 
 import { api } from "../api/client";
 import { useLiveRefresh, useRequest } from "../lib/hooks";
+import { onStatusChanged } from "../lib/status";
 import { DashboardIcon, PlusIcon, RefreshIcon, RepoIcon } from "./icons";
 import { LogoMark } from "./Logo";
 
@@ -30,6 +31,8 @@ export function Layout() {
   }, [location.pathname, refresh]);
 
   useLiveRefresh((status?.active ?? 0) > 0, refresh);
+
+  useEffect(() => onStatusChanged(refresh), [refresh]);
 
   return (
     <div className="app-shell">

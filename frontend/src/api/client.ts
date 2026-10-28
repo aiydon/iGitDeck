@@ -20,6 +20,10 @@ export type SyncRunView = components["schemas"]["SyncRunView"];
 export type SyncProgress = components["schemas"]["SyncProgress"];
 export type SyncPhase = components["schemas"]["SyncPhase"];
 export type SyncRunPage = components["schemas"]["SyncRunPage"];
+export type BulkRetryResult = components["schemas"]["BulkRetryResult"];
+export type ProgressSnapshot = components["schemas"]["ProgressSnapshot"];
+export type ActiveSync = components["schemas"]["ActiveSync"];
+export type CommitSummary = components["schemas"]["CommitSummary"];
 export type SystemStatus = components["schemas"]["SystemStatus"];
 export type DayActivity = components["schemas"]["DayActivity"];
 export type MonthChurn = components["schemas"]["MonthChurn"];
@@ -102,6 +106,9 @@ export const api = {
   getRepo: (repoId: number) => request<RepoDetail>(`/api/repos/${repoId}`),
   status: () => request<SystemStatus>("/api/status"),
   listSyncs: (params: SyncListParams) => request<SyncRunPage>(`/api/syncs${toQuery(params)}`),
+  retryFailed: () =>
+    request<BulkRetryResult>("/api/syncs/retry-failed", { method: "POST" }),
+  progress: () => request<ProgressSnapshot>("/api/syncs/progress"),
   syncRepo: (repoId: number) =>
     request<SyncQueuedResult>(`/api/repos/${repoId}/sync`, { method: "POST" }),
 };
