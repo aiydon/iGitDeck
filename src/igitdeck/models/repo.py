@@ -100,16 +100,10 @@ class RepoStats(BaseModel):
     @computed_field
     @property
     def doc_lines(self) -> int:
-        """Lines in data/config and prose files, kept out of `code_lines`."""
+        """Data/config and prose lines inside `code_lines` (display breakdown only)."""
         return sum(
             language.code for language in self.languages if language.category in {"data", "prose"}
         )
-
-    @computed_field
-    @property
-    def text_lines(self) -> int:
-        """Every tracked language line; detail pages show this total."""
-        return sum(language.code for language in self.languages)
 
     @classmethod
     def from_languages(
@@ -120,26 +114,25 @@ class RepoStats(BaseModel):
         languages: Sequence[LanguageStat],
         disk_bytes: int,
     ) -> RepoStats:
-        """Build stats from scc languages using the charted-code rules.
+        """Build stats from scc languages.
 
-        Code lines and the file count follow `languages.summarize` (code over
-        programming + markup, files over everything); comments and blanks are
-        summed over charted languages only so data/prose files stay out of the
-        code metrics.
+        Every reported language contributes, so these totals always match the
+        language chart the same repository shows elsewhere. Languages are
+        normalised here (category + byte share) so `doc_lines` and charts work
+        on freshly collected data as well as on rows read back from SQLite.
         """
-        from igitdeck.languages import is_counted, summarize
+        from igitdeck.languages import with_shares  # avoids an import cycle
 
-        code_lines, _doc_lines, file_count = summarize(languages)
-        counted_languages = [language for language in languages if is_counted(language.name)]
+        shared = with_shares(languages)
         return cls(
             captured_at=captured_at,
             commit_sha=commit_sha,
-            code_lines=code_lines,
-            comment_lines=sum(language.comment for language in counted_languages),
-            blank_lines=sum(language.blank for language in counted_languages),
-            file_count=file_count,
+            code_lines=sum(language.code for language in shared),
+            comment_lines=sum(language.comment for language in shared),
+            blank_lines=sum(language.blank for language in shared),
+            file_count=sum(language.files for language in shared),
             disk_bytes=disk_bytes,
-            languages=languages,
+            languages=shared,
         )
 
 

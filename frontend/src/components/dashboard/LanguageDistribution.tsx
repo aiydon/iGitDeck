@@ -23,7 +23,7 @@ export function LanguageDistribution({
       <div className="panel-head">
         <div>
           <h2>语言分布</h2>
-          <p>编程与标记语言 · 按字节占比</p>
+          <p>全部语言 · 按字节占比</p>
         </div>
         <Link className="text-link" to="/repos">
           查看仓库

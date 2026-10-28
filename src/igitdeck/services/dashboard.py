@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from igitdeck.clock import utcnow
-from igitdeck.languages import counted, is_counted, summarize
+from igitdeck.languages import with_shares
 from igitdeck.models.dashboard import (
     LanguageSlice,
     Overview,
@@ -77,9 +77,7 @@ class DashboardService:
             sync_interval_minutes=self.policy.interval_seconds // 60,
             next_sync_at=next_pair[0] if self.auto_sync and next_pair else None,
             due_now=due,
-            total_code_lines=sum(
-                total.code_lines for total in language_totals if is_counted(total.name)
-            ),
+            total_code_lines=sum(total.code_lines for total in language_totals),
             total_disk_bytes=disk_bytes,
             recent_activity=[
                 SidebarRepo(
@@ -110,9 +108,7 @@ class DashboardService:
     def overview(self) -> Overview:
         status_counts = self.repos.counts_by(FacetField.STATUS)
         language_totals = self.stats.language_totals()
-        language_stats = [total.as_stat() for total in language_totals]
-        charted = counted(language_stats)
-        code_lines, _doc_lines, file_count = summarize(language_stats)
+        languages = with_shares([total.as_stat() for total in language_totals])
         repos_by_language = {total.name: total.repos for total in language_totals}
 
         recent_repos = self.catalog.list_repos(
@@ -126,9 +122,9 @@ class DashboardService:
 
         return Overview(
             repo_count=sum(status_counts.values()),
-            total_code_lines=code_lines,
+            total_code_lines=sum(total.code_lines for total in language_totals),
             total_disk_bytes=self.stats.disk_bytes(),
-            total_files=file_count,
+            total_files=sum(total.files for total in language_totals),
             statuses=[
                 StatusSlice(status=status, count=status_counts.get(status.value, 0))
                 for status in RepoStatus
@@ -141,7 +137,7 @@ class DashboardService:
                     percent=language.percent,
                     repos=repos_by_language.get(language.name, 0),
                 )
-                for language in charted
+                for language in languages
             ],
             recent_syncs=self.runs.recent(RECENT_SYNC_LIMIT),
             recent_repos=recent_repos.items,

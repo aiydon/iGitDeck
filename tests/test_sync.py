@@ -197,9 +197,8 @@ def test_fake_language_override(container: Container) -> None:
     collector = FakeStatsCollector(
         [LanguageStat(name="Rust", code=7, comment=1, blank=0, files=2, percent=100.0)]
     )
-    summary = collector.collect(container.paths.root, disk_roots=[])
-    assert summary.code_lines == 7
-    assert summary.languages[0].name == "Rust"
+    collected = collector.collect(container.paths.root, disk_roots=[])
+    assert [(item.name, item.code) for item in collected.languages] == [("Rust", 7)]
 
 
 def test_interrupted_first_fetch_resumes_instead_of_recloning(

@@ -37,7 +37,7 @@ make run       # uvicorn，监听 .env 中的 IGD_HOST:IGD_PORT
 - **自动发现**：独立爬虫进程抓取 GitHub Trending，通过 `POST /api/repos` 加入同步列表；也支持页面手动添加（支持 GitLab 多级组，如 `openfoam/core/openfoam`）。
 - **镜像同步**：按 `平台/owner/repo` 落盘为 bare 镜像；定时 fetch、更新默认分支、刷新工作区。同仓库互斥，失败按指数退避重试。
 - **代码统计**：`scc --format json --percent` 统计代码/注释/空行/文件数，并记录镜像与工作区磁盘占用。
-- **语言口径**：总览只统计编程语言与标记语言（JSON/YAML/TOML/CSV 与 Markdown 等不计入），与 GitHub 语言条一致；仓库详情统计全部语言，首张卡片显示「文本行」（代码 + 文档/配置），语言列表标注「配置 / 文档」。百分比按字节加权，在各自集合内重新归一到 100%。
+- **语言口径**：所有可视化都统计 scc 报告的全部语言（含 JSON/YAML/TOML/CSV 与 Markdown），不再按编程/标记过滤；总览、详情、列表与语言筛选使用同一集合。百分比按字节加权并归一到 100%，`category` 只用于详情里的「配置 / 文档」标签，不参与过滤。
 - **检索**：SQLite FTS5 索引仓库名、owner、描述和 README 纯文本。
 - **README 预览**：Markdown 渲染、相对链接与图片重写、后端 HTML 清洗、raw 文件按仓库内路径安全读取。
 - **只读 clone**：`git http-backend` 暴露 smart HTTP，`upload-pack` 有并发上限和超时。
@@ -318,7 +318,7 @@ make hooks       # 安装可选 commit-msg hook
 - **导航按任务分组**：总览 / 仓库 / 同步三个入口；仓库与同步带计数徽标，侧栏底部显示同步队列状态并可直接跳到失败或待同步列表。
 - **更新时间只看提交**：列表与详情以 git 最后一次提交作为“更新”时间；本地同步时间单独标注为“本地镜像”。
 - **提交级一致性**：`repos.commit_sha` 记录已镜像的提交，统计快照与趋势仅在 commit 匹配时展示；同步记录按仓库保留最近 50 条。
-- **scc 单一事实来源**：语言名称与 `CodePercent` 直接来自 scc v4 JSON；前后端不维护第二套语言归一化。
+- **scc 单一事实来源**：语言名称、行数与字节数直接来自 scc v4 JSON；占比由本系统按字节统一计算，`RepoStats.from_languages` 是唯一的汇总入口，前后端不维护第二套归一化。
 - **显式依赖**：服务通过构造函数注入，容器只在 `main.py` 装配；爬虫不 import 业务层。
 - **内容边界**：README 经 bleach 清洗；raw 文件响应带 `CSP sandbox` / `nosniff` 且拒绝 `.git` 指针；smart HTTP 请求体有硬上限，clone 权限仅为 `upload-pack`。
 - **轮询克制**：列表/详情只在存在同步中仓库且标签页可见时轮询（先 4s，1 分钟后降到 10s），标签页隐藏即停止，避免长 clone 期间刷满访问日志。

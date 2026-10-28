@@ -97,46 +97,49 @@ def _fake_scc(tmp_path: Path, payload: list[dict]) -> Path:
     return script
 
 
-def test_scc_collector_sums_counted_code_and_all_files(tmp_path: Path) -> None:
+def test_scc_collector_returns_raw_languages_and_disk_usage(tmp_path: Path) -> None:
     tree = tmp_path / "tree"
     tree.mkdir()
     (tree / "a.py").write_bytes(b"x" * 12)
 
     collector = SccStatsCollector(str(_fake_scc(tmp_path, SCC_FIXTURE)), timeout_seconds=10)
-    result = collector.collect(tree, disk_roots=[tree])
+    collected = collector.collect(tree, disk_roots=[tree])
 
-    assert result.code_lines == 120
-    assert result.comment_lines == 10
-    assert result.blank_lines == 20
-    assert result.file_count == 4
-    assert result.disk_bytes == 12
-    assert [language.name for language in result.languages] == ["Python", "Markdown"]
+    assert collected.disk_bytes == 12
+    assert [language.name for language in collected.languages] == ["Python", "Markdown"]
+
+    stats = RepoStats.from_languages(
+        captured_at=datetime.now(UTC),
+        commit_sha="sha",
+        languages=collected.languages,
+        disk_bytes=collected.disk_bytes,
+    )
+    # Every language contributes: Python 120+30 Markdown code, all 4 files.
+    assert stats.code_lines == 150
+    assert stats.comment_lines == 10
+    assert stats.blank_lines == 25
+    assert stats.file_count == 4
 
 
-def test_scc_collector_markdown_only_repo_keeps_doc_lines(tmp_path: Path) -> None:
+def test_scc_collector_markdown_only_repo_counts_as_docs(tmp_path: Path) -> None:
     tree = tmp_path / "docs"
     tree.mkdir()
     (tree / "README.md").write_bytes(b"# docs\n")
 
     payload = [{"Name": "Markdown", "Code": 30, "Comment": 0, "Blank": 5, "Count": 2}]
     collector = SccStatsCollector(str(_fake_scc(tmp_path, payload)), timeout_seconds=10)
-    summary = collector.collect(tree, disk_roots=[tree])
+    collected = collector.collect(tree, disk_roots=[tree])
 
-    assert summary.code_lines == 0
-    assert summary.file_count == 2
-
-    stats = RepoStats(
+    stats = RepoStats.from_languages(
         captured_at=datetime.now(UTC),
         commit_sha="sha",
-        code_lines=summary.code_lines,
-        comment_lines=summary.comment_lines,
-        blank_lines=summary.blank_lines,
-        file_count=summary.file_count,
-        disk_bytes=summary.disk_bytes,
-        languages=summary.languages,
+        languages=collected.languages,
+        disk_bytes=collected.disk_bytes,
     )
+    # A documentation-only repository is reported, not blanked out.
+    assert stats.code_lines == 30
     assert stats.doc_lines == 30
-    assert stats.text_lines == 30
+    assert stats.file_count == 2
     assert stats.languages[0].name == "Markdown"
     assert stats.languages[0].category == "prose"
     assert stats.languages[0].percent == 100.0

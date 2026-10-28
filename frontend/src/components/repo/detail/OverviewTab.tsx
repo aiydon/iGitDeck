@@ -19,13 +19,13 @@ export function OverviewTab({ repo, nextSyncAt }: OverviewTabProps) {
       <section className="stat-grid">
         <StatCard
           label="文本行"
-          value={stats ? compactNumber(stats.text_lines) : "—"}
+          value={stats ? compactNumber(stats.code_lines) : "—"}
           detail={
-            stats
-              ? `${formatNumber(stats.code_lines)} 代码 · ${formatNumber(
-                  stats.doc_lines,
-                )} 文档/配置`
-              : "等待首次同步"
+            !stats
+              ? "等待首次同步"
+              : stats.doc_lines > 0
+                ? `其中 ${formatNumber(stats.doc_lines)} 行文档/配置`
+                : `${languages.length} 种语言`
           }
           icon={<CodeIcon size={19} />}
           tone="accent"

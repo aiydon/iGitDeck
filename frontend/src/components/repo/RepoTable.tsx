@@ -7,7 +7,6 @@ import {
   formatDateTime,
   relativeTime,
 } from "../../lib/format";
-import { chartLanguages } from "../../lib/languages";
 import { PlatformBadge, StatusBadge } from "../Badges";
 import { ArrowUpRightIcon, RefreshIcon } from "../icons";
 import { LanguageBar } from "../LanguageBar";
@@ -24,7 +23,7 @@ interface RepoTableProps {
 export function RepoTable({ items, retryingId, onRetry }: RepoTableProps) {
   const rows = items.map((repo) => ({
     repo,
-    languages: chartLanguages(repo.stats?.languages ?? []),
+    languages: repo.stats?.languages ?? [],
   }));
 
   return (

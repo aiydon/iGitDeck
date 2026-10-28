@@ -20,7 +20,7 @@ export function LanguagePanel({ stats }: { stats: RepoStats | null }) {
           <h2>语言构成</h2>
           <p>
             {stats
-              ? `代码 ${formatNumber(stats.code_lines)} 行 · 文档/配置 ${formatNumber(stats.doc_lines)} 行`
+              ? `${formatNumber(stats.code_lines)} 行 · ${languages.length} 种语言`
               : "尚未统计"}
           </p>
         </div>

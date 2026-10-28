@@ -197,3 +197,44 @@ def test_migrate_v6_keeps_trends_and_defaults_format_version(tmp_path: Path) -> 
         assert row[3] == 0
     finally:
         connection.close()
+
+
+def test_migrate_v7_realigns_stored_snapshot_totals(tmp_path: Path) -> None:
+    path = tmp_path / "v6.db"
+    connection = sqlite3.connect(path)
+    for target in range(1, 7):
+        for statement in MIGRATIONS[target]:
+            connection.execute(statement)
+    connection.execute(
+        """
+        INSERT INTO repos (platform, owner, name, url, source, status, added_at)
+        VALUES ('github', 'a', 'b', 'u', 'manual', 'ready', 1)
+        """
+    )
+    connection.execute(
+        """
+        INSERT INTO repo_snapshots (
+            repo_id, captured_at, commit_sha, code_lines,
+            comment_lines, blank_lines, file_count, disk_bytes, languages
+        ) VALUES (1, 1, 'sha', 10, 1, 2, 1, 100, ?)
+        """,
+        (
+            '[{"name":"Python","code":10,"comment":1,"blank":2,"files":2},'
+            '{"name":"Markdown","code":40,"comment":0,"blank":5,"files":3}]',
+        ),
+    )
+    connection.execute("PRAGMA user_version = 6")
+    connection.commit()
+    connection.close()
+
+    Database(path).migrate()
+
+    connection = sqlite3.connect(path)
+    try:
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
+        row = connection.execute(
+            "SELECT code_lines, comment_lines, blank_lines, file_count FROM repo_snapshots"
+        ).fetchone()
+        assert row == (50, 1, 7, 5)
+    finally:
+        connection.close()

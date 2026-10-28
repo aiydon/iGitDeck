@@ -9,7 +9,7 @@ import pytest
 from igitdeck.config import Settings
 from igitdeck.models.repo import LanguageStat
 from igitdeck.services.container import Container, build_container
-from igitdeck.services.stats_collector import StatsSummary, directory_size
+from igitdeck.services.stats_collector import CollectedStats, directory_size
 
 
 @pytest.fixture
@@ -40,15 +40,11 @@ class FakeStatsCollector:
             or (LanguageStat(name="Python", code=10, comment=2, blank=3, files=1, percent=100.0),)
         )
 
-    def collect(self, tree: Path, disk_roots: Sequence[Path]) -> StatsSummary:
+    def collect(self, tree: Path, disk_roots: Sequence[Path]) -> CollectedStats:
         del tree  # the fake ignores file contents; disk roots are enough
-        return StatsSummary(
-            code_lines=sum(language.code for language in self.languages),
-            comment_lines=sum(language.comment for language in self.languages),
-            blank_lines=sum(language.blank for language in self.languages),
-            file_count=sum(language.files for language in self.languages),
-            disk_bytes=sum(directory_size(root) for root in disk_roots),
+        return CollectedStats(
             languages=list(self.languages),
+            disk_bytes=sum(directory_size(root) for root in disk_roots),
         )
 
 

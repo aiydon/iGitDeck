@@ -116,9 +116,8 @@ def _repo_record(row: sqlite3.Row) -> RepoRecord:
 def _stats_from_prefixed_row(row: sqlite3.Row) -> RepoStats | None:
     """Build statistics from the joined snapshot languages.
 
-    Totals stored before the GitHub-style filter included JSON and Markdown;
-    deriving them from the normalized languages keeps every surface consistent
-    without a rescan.
+    Totals are always derived from the languages, so a rescan is never needed
+    when the counting rule changes.
     """
     if row["snapshot_id"] is None:
         return None

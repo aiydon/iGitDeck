@@ -1,4 +1,8 @@
-"""scc is the single source of code/comment/blank/file language counts."""
+"""scc is the single source of language counts.
+
+The collector returns the language rows plus disk usage; `RepoStats` owns the
+arithmetic so totals and charts can never drift apart.
+"""
 
 from __future__ import annotations
 
@@ -11,7 +15,7 @@ from typing import Protocol
 
 from pydantic import BaseModel
 
-from igitdeck.languages import is_counted, summarize, with_shares
+from igitdeck.languages import with_shares
 from igitdeck.models.repo import LanguageStat
 
 
@@ -19,17 +23,15 @@ class StatsCollectionError(RuntimeError):
     pass
 
 
-class StatsSummary(BaseModel):
-    code_lines: int
-    comment_lines: int
-    blank_lines: int
-    file_count: int
-    disk_bytes: int
+class CollectedStats(BaseModel):
+    """Raw scc output for one worktree, before any totals are derived."""
+
     languages: list[LanguageStat]
+    disk_bytes: int
 
 
 class StatsCollector(Protocol):
-    def collect(self, tree: Path, disk_roots: Sequence[Path]) -> StatsSummary: ...
+    def collect(self, tree: Path, disk_roots: Sequence[Path]) -> CollectedStats: ...
 
 
 def parse_scc_json(payload: str) -> list[LanguageStat]:
@@ -84,7 +86,7 @@ class SccStatsCollector:
         self.binary = binary
         self.timeout_seconds = timeout_seconds
 
-    def collect(self, tree: Path, disk_roots: Sequence[Path]) -> StatsSummary:
+    def collect(self, tree: Path, disk_roots: Sequence[Path]) -> CollectedStats:
         command = [self.binary, "--format", "json", "--percent", str(tree)]
         try:
             completed = subprocess.run(
@@ -105,14 +107,7 @@ class SccStatsCollector:
             detail = (completed.stderr or completed.stdout).strip()
             raise StatsCollectionError(f"scc 失败: {detail[-2000:]}")
 
-        languages = parse_scc_json(completed.stdout)
-        code_lines, _doc_lines, file_count = summarize(languages)
-        counted_languages = [language for language in languages if is_counted(language.name)]
-        return StatsSummary(
-            code_lines=code_lines,
-            comment_lines=sum(language.comment for language in counted_languages),
-            blank_lines=sum(language.blank for language in counted_languages),
-            file_count=file_count,
+        return CollectedStats(
+            languages=parse_scc_json(completed.stdout),
             disk_bytes=sum(directory_size(root) for root in disk_roots),
-            languages=languages,
         )

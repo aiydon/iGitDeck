@@ -21,7 +21,7 @@ from igitdeck.repositories.sync_runs import SyncRunRepository
 from igitdeck.services.metadata import MetadataClient
 from igitdeck.services.progress import ProgressTracker
 from igitdeck.services.readme import ReadmeService, ReadmeSource
-from igitdeck.services.stats_collector import StatsCollector, StatsSummary
+from igitdeck.services.stats_collector import StatsCollector
 from igitdeck.services.sync_errors import describe_sync_error
 from igitdeck.services.trends import TrendService
 
@@ -63,7 +63,7 @@ class _Capture(BaseModel):
     branch: str
     commit_sha: str
     last_commit_at: datetime
-    summary: StatsSummary
+    stats: RepoStats
     readme: ReadmeSource
     description: str | None
 
@@ -116,7 +116,7 @@ class SyncService:
             capture = self._capture(repo, mirror)
             self.progress.update(repo_id, phase=SyncPhase.ANALYZING, percent=99)
 
-            self._persist(repo_id, capture, synced_at=utcnow())
+            self._persist(repo_id, capture)
             self.runs.finish(
                 run_id,
                 status=SyncRunStatus.SUCCESS,
@@ -139,8 +139,8 @@ class SyncService:
                 repo.name,
                 capture.commit_sha[:10],
                 time.monotonic() - started,
-                capture.summary.file_count,
-                capture.summary.code_lines,
+                capture.stats.file_count,
+                capture.stats.code_lines,
             )
         except Exception as exc:  # every failure belongs in the run log
             self._record_failure(repo, run_id, commit_sha, exc)
@@ -191,7 +191,9 @@ class SyncService:
         )
 
     def _capture(self, repo: RepoRecord, mirror: _Mirror) -> _Capture:
-        summary = self.collector.collect(mirror.worktree, disk_roots=[mirror.bare, mirror.worktree])
+        collected = self.collector.collect(
+            mirror.worktree, disk_roots=[mirror.bare, mirror.worktree]
+        )
         readme = self.readme.inspect(mirror.worktree)
         description = repo.description or self.metadata.fetch_description(
             RepoIdentity(
@@ -210,29 +212,21 @@ class SyncService:
             branch=mirror.branch,
             commit_sha=mirror.commit_sha,
             last_commit_at=last_commit_at,
-            summary=summary,
+            stats=RepoStats.from_languages(
+                captured_at=utcnow(),
+                commit_sha=mirror.commit_sha,
+                languages=collected.languages,
+                disk_bytes=collected.disk_bytes,
+            ),
             readme=readme,
             description=description,
         )
 
-    def _persist(self, repo_id: int, capture: _Capture, *, synced_at: datetime) -> None:
-        summary = capture.summary
-        self.stats.add_snapshot(
-            repo_id,
-            RepoStats(
-                captured_at=synced_at,
-                commit_sha=capture.commit_sha,
-                code_lines=summary.code_lines,
-                comment_lines=summary.comment_lines,
-                blank_lines=summary.blank_lines,
-                file_count=summary.file_count,
-                disk_bytes=summary.disk_bytes,
-                languages=summary.languages,
-            ),
-        )
+    def _persist(self, repo_id: int, capture: _Capture) -> None:
+        self.stats.add_snapshot(repo_id, capture.stats)
         self.repos.mark_success(
             repo_id,
-            synced_at=synced_at,
+            synced_at=utcnow(),
             default_branch=capture.branch,
             commit_sha=capture.commit_sha,
             last_commit_at=capture.last_commit_at,

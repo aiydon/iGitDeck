@@ -1,9 +1,10 @@
-"""Language classification and byte shares, following GitHub's language bar.
+"""Language statistics: categories for display, shares over every language.
 
-Every language keeps a category (programming / markup / data / prose). The
-overview charts only programming + markup, like GitHub, while repository detail
-shows everything so a documentation-only project is not blank. Shares are
-always computed over the set being displayed.
+scc reports all languages it recognises. The dashboard counts every one of
+them — no programming/markup filtering — so totals, language bars and the
+detail panel always describe the same set. `category` is display metadata only
+(the detail list tags data files as 配置 and prose as 文档); it never removes a
+language from a total or a chart.
 """
 
 from __future__ import annotations
@@ -63,8 +64,6 @@ _MARKUP_LANGUAGES = frozenset(
     }
 )
 
-COUNTED_CATEGORIES = frozenset({LanguageCategory.PROGRAMMING, LanguageCategory.MARKUP})
-
 
 def category_of(name: str) -> LanguageCategory:
     if name in _DATA_LANGUAGES:
@@ -76,16 +75,12 @@ def category_of(name: str) -> LanguageCategory:
     return LanguageCategory.PROGRAMMING
 
 
-def is_counted(name: str) -> bool:
-    return category_of(name) in COUNTED_CATEGORIES
-
-
 def _weight(language: LanguageStat, *, use_bytes: bool) -> int:
     return language.bytes if use_bytes else language.code
 
 
 def with_shares(languages: Sequence[LanguageStat]) -> list[LanguageStat]:
-    """All languages with categories and shares over the given set."""
+    """Every language, categorised and weighted by bytes (code for old rows)."""
     if not languages:
         return []
     use_bytes = any(language.bytes > 0 for language in languages)
@@ -103,19 +98,6 @@ def with_shares(languages: Sequence[LanguageStat]) -> list[LanguageStat]:
     ]
     shares.sort(key=lambda language: (-language.percent, language.name))
     return shares
-
-
-def counted(languages: Sequence[LanguageStat]) -> list[LanguageStat]:
-    """Programming + markup only, re-shared to sum to 100%."""
-    return with_shares([language for language in languages if is_counted(language.name)])
-
-
-def summarize(languages: Sequence[LanguageStat]) -> tuple[int, int, int]:
-    """(code lines, documentation lines, files) using the charted code set."""
-    code = sum(language.code for language in languages if is_counted(language.name))
-    docs = sum(language.code for language in languages if not is_counted(language.name))
-    files = sum(language.files for language in languages)
-    return code, docs, files
 
 
 def encode_many(languages: Sequence[LanguageStat]) -> str:

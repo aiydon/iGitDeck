@@ -5,7 +5,7 @@ Bump SCHEMA_VERSION and append the migration statements when the schema changes.
 
 from __future__ import annotations
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 # Each entry upgrades the database from the previous version to its key.
 MIGRATIONS: dict[int, tuple[str, ...]] = {
@@ -196,5 +196,28 @@ MIGRATIONS: dict[int, tuple[str, ...]] = {
     6: (
         # Insights gain a format version so stale rows regenerate exactly once.
         "ALTER TABLE repo_trends ADD COLUMN format_version INTEGER NOT NULL DEFAULT 0",
+    ),
+    7: (
+        # Totals used to exclude data/prose files. Sorting reads these stored
+        # columns while the UI derives from `languages`, so realign them once.
+        """
+        UPDATE repo_snapshots
+        SET code_lines = (
+                SELECT coalesce(sum(json_extract(value, '$.code')), 0)
+                FROM json_each(repo_snapshots.languages)
+            ),
+            comment_lines = (
+                SELECT coalesce(sum(json_extract(value, '$.comment')), 0)
+                FROM json_each(repo_snapshots.languages)
+            ),
+            blank_lines = (
+                SELECT coalesce(sum(json_extract(value, '$.blank')), 0)
+                FROM json_each(repo_snapshots.languages)
+            ),
+            file_count = (
+                SELECT coalesce(sum(json_extract(value, '$.files')), 0)
+                FROM json_each(repo_snapshots.languages)
+            )
+        """,
     ),
 }
