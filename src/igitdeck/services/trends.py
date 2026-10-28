@@ -32,11 +32,18 @@ TOP_CONTRIBUTORS = 5
 
 
 def build_line_trend(
-    deltas: list[CommitLineDelta], limit: int = MAX_TREND_POINTS
+    deltas: list[CommitLineDelta],
+    limit: int = MAX_TREND_POINTS,
+    *,
+    baseline: int = 0,
 ) -> list[TrendPoint]:
-    """Cumulative tracked lines over commits, oldest first, downsampled for charts."""
+    """Cumulative tracked lines over commits, oldest first, downsampled for charts.
+
+    `baseline` is the line count just before the oldest scanned commit, so a
+    truncated history still yields absolute values rather than starting at 0.
+    """
     points: list[TrendPoint] = []
-    total = 0
+    total = max(0, baseline)
     for delta in reversed(deltas):
         committed_at = from_epoch(delta.committed_at)
         if committed_at is None:
@@ -132,26 +139,21 @@ class TrendService:
     def refresh(self, repo_id: int, *, bare: Path, branch: str, commit_sha: str) -> None:
         """Best effort: a trend failure must never fail a sync."""
         try:
-            if self.git.commit_count(bare, branch) > self.max_commits:
+            total_commits = self.git.commit_count(bare, branch)
+            truncated = total_commits > self.max_commits
+            scan_limit = self.max_commits if truncated else None
+            if truncated:
                 logger.info(
-                    "git insights skipped for repo %s: history exceeds %s commits",
+                    "git insights truncated for repo %s: %s commits, scanning newest %s",
                     repo_id,
+                    total_commits,
                     self.max_commits,
                 )
-                # Mark the commit as attempted so reads do not retry the count.
-                self.trends.save(
-                    repo_id,
-                    commit_sha=commit_sha,
-                    points=[],
-                    note=f"提交数超过 {self.max_commits:,}，已跳过趋势生成",
-                )
-                return
 
-            deltas = self.git.line_history(bare, branch)
-            commits = self.git.commit_authors(bare, branch)
+            deltas = self.git.line_history(bare, branch, max_commits=scan_limit)
+            commits = self.git.commit_authors(bare, branch, max_commits=scan_limit)
             tip_epoch = self.git.commit_time(bare, commit_sha)
-            points = build_line_trend(deltas)
-            if not points:
+            if not deltas:
                 self.trends.save(
                     repo_id,
                     commit_sha=commit_sha,
@@ -159,17 +161,33 @@ class TrendService:
                     note="默认分支没有可分析的提交",
                 )
                 return
+
+            # A truncated scan starts mid-history; anchor it to HEAD so the
+            # series keeps absolute line counts instead of rising from zero.
+            head_lines = self.git.tracked_line_count(bare, branch) if truncated else None
+            baseline = (
+                max(0, head_lines - sum(delta.net_lines for delta in deltas))
+                if head_lines is not None
+                else 0
+            )
+            points = build_line_trend(deltas, baseline=baseline)
             tip_time = from_epoch(tip_epoch)
-            if points and points[-1].commit_sha != commit_sha and tip_time is not None:
+            if points[-1].commit_sha != commit_sha and tip_time is not None:
                 # The tip is usually a merge commit, which has no numstat diff.
                 points.append(
                     TrendPoint(
                         committed_at=tip_time,
                         commit_sha=commit_sha,
-                        lines=points[-1].lines,
+                        lines=head_lines if head_lines is not None else points[-1].lines,
                     )
                 )
 
+            note = None
+            if truncated:
+                note = (
+                    f"历史超过 {self.max_commits:,} 个提交，"
+                    f"仅显示最近 {self.max_commits:,} 个提交的洞察"
+                )
             self.trends.save(
                 repo_id,
                 commit_sha=commit_sha,
@@ -177,6 +195,7 @@ class TrendService:
                 activity=build_daily_activity([commit.committed_at for commit in commits]),
                 churn=build_month_churn(deltas, anchor_timestamp=tip_epoch),
                 contributors=build_contributors([commit.author for commit in commits]),
+                note=note,
             )
         except Exception as exc:  # git history is derived data
             logger.warning("git insights unavailable for repo %s: %s", repo_id, exc)

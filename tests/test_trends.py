@@ -3,8 +3,6 @@ from __future__ import annotations
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
-import pytest
-
 from igitdeck.clock import to_epoch
 from igitdeck.git import CommitLineDelta, GitClient
 from igitdeck.models.repo import (
@@ -158,41 +156,48 @@ def test_trend_service_appends_merge_tip(container: Container, tmp_path: Path, g
     assert stored.points[-1].lines == stored.points[-2].lines
 
 
-def test_trend_service_marks_oversized_history_as_covered(
-    container: Container,
-    monkeypatch,
+def test_truncated_history_keeps_absolute_line_counts(
+    container: Container, make_git_repo, git
 ) -> None:
     from igitdeck.repositories.trends import TrendRepository
 
-    repository = TrendRepository(container.db)
+    source = make_git_repo({"a.txt": "1\n2\n3\n"})
+    for index in range(4):
+        (source / "a.txt").write_text("1\n2\n3\n" + "x\n" * (index + 1), encoding="utf-8")
+        git(source, "add", ".")
+        git(source, "commit", "-qm", f"step {index}")
+
+    commit = git(source, "rev-parse", "HEAD").strip()
+    bare = container.paths.bare_repo(Platform.GITHUB, "local", "truncated")
+    bare.parent.mkdir(parents=True, exist_ok=True)
+    container.sync.git.clone_mirror(source.as_uri(), bare)
+
     record = container.repos.add(
         RepoIdentity(
             platform=Platform.GITHUB,
             owner="local",
-            name="huge",
-            url="https://github.com/local/huge.git",
+            name="truncated",
+            url=source.as_uri(),
         ),
         source=RepoSource.MANUAL,
         description=None,
         added_at=datetime.now(UTC),
     )
-    service = TrendService(container.sync.git, repository, max_commits=20_000)
-    monkeypatch.setattr(container.sync.git, "commit_count", lambda *args: 20_001)
-    monkeypatch.setattr(
-        container.sync.git,
-        "line_history",
-        lambda *args: pytest.fail("history must not be read when too long"),
-    )
+    repository = TrendRepository(container.db)
+    service = TrendService(container.sync.git, repository, max_commits=3)
 
-    service.refresh(record.id, bare=Path("/tmp"), branch="main", commit_sha="a" * 40)
+    service.refresh(record.id, bare=bare, branch="main", commit_sha=commit)
 
-    assert service.covered(record.id, "a" * 40)
-    stored = service.record(record.id, "a" * 40)
+    stored = service.record(record.id, commit)
     assert stored is not None
-    assert stored.points == []
     assert stored.note is not None
-    assert "20,000" in stored.note
-    assert not service.covered(record.id, "b" * 40)
+    assert "最近 3 个提交" in stored.note
+    assert 0 < len(stored.points) <= 3
+    assert stored.points[0].lines > 0
+    assert stored.points[-1].lines == container.sync.git.tracked_line_count(bare, "main")
+    assert stored.activity
+    assert stored.churn
+    assert stored.contributors
 
 
 def test_build_daily_activity_counts_days_ending_on_the_newest_week() -> None:
@@ -257,7 +262,7 @@ def test_build_contributors_ranks_and_limits() -> None:
     assert [(item.name, item.commits) for item in contributors] == [("a", 3), ("b", 2)]
 
 
-def test_dashboard_aggregates_weekly_activity(container: Container) -> None:
+def test_dashboard_aggregates_daily_activity(container: Container) -> None:
     record = container.repos.add(
         RepoIdentity(
             platform=Platform.GITHUB,

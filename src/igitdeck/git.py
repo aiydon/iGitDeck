@@ -231,23 +231,26 @@ class GitClient:
         ).stdout
         return int(output)
 
-    def line_history(self, bare: Path, branch: str) -> list[CommitLineDelta]:
+    def line_history(
+        self, bare: Path, branch: str, *, max_commits: int | None = None
+    ) -> list[CommitLineDelta]:
         """Per-commit line deltas on `branch`, newest first.
 
         Merge commits are skipped: without `-m` git emits no numstat for them,
         and their content already arrives through the merged commits.
         """
-        result = self._run(
-            [
-                "--git-dir",
-                str(bare),
-                "log",
-                "--numstat",
-                "--no-merges",
-                "--format=@@%H %ct",
-                f"refs/heads/{branch}",
-            ]
-        )
+        args = [
+            "--git-dir",
+            str(bare),
+            "log",
+            "--numstat",
+            "--no-merges",
+            "--format=@@%H %ct",
+        ]
+        if max_commits is not None:
+            args.append(f"--max-count={max_commits}")
+        args.append(f"refs/heads/{branch}")
+        result = self._run(args)
         shas: list[str] = []
         timestamps: list[int] = []
         added: list[int] = []
@@ -280,17 +283,40 @@ class GitClient:
             )
         ]
 
-    def commit_authors(self, bare: Path, branch: str) -> list[CommitAuthor]:
-        """Every commit's timestamp and author on `branch`, newest first."""
+    def tracked_line_count(self, bare: Path, branch: str) -> int:
+        """Lines in tracked text files at `branch`, using git's binary filter.
+
+        Matches the totals produced by `line_history` for a full history, which
+        lets a truncated scan be anchored to the real HEAD line count.
+        """
         result = self._run(
             [
                 "--git-dir",
                 str(bare),
-                "log",
-                "--format=%ct%x1f%an",
+                "grep",
+                "-c",
+                "-I",
+                "-e",
+                "",
                 f"refs/heads/{branch}",
             ]
         )
+        total = 0
+        for line in result.stdout.splitlines():
+            _, separator, count = line.rpartition(":")
+            if separator and count.isdigit():
+                total += int(count)
+        return total
+
+    def commit_authors(
+        self, bare: Path, branch: str, *, max_commits: int | None = None
+    ) -> list[CommitAuthor]:
+        """Commit timestamps and authors on `branch`, newest first."""
+        args = ["--git-dir", str(bare), "log", "--format=%ct%x1f%an"]
+        if max_commits is not None:
+            args.append(f"--max-count={max_commits}")
+        args.append(f"refs/heads/{branch}")
+        result = self._run(args)
         authors: list[CommitAuthor] = []
         for line in result.stdout.splitlines():
             timestamp, separator, name = line.partition("\x1f")
