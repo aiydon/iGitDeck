@@ -22,11 +22,11 @@ import {
 import { Notice } from "../components/Notice";
 import type { NoticeTone } from "../components/Notice";
 import { ActivityHeatmap } from "../components/repo/ActivityHeatmap";
+import { BranchesPanel } from "../components/repo/BranchesPanel";
 import { CommitList } from "../components/repo/CommitList";
 import { ContributorList } from "../components/repo/ContributorList";
 import { LanguagePanel } from "../components/repo/LanguagePanel";
 import { MetaPanel } from "../components/repo/MetaPanel";
-import { SyncHistoryPanel } from "../components/repo/SyncHistoryPanel";
 import { Spinner } from "../components/Spinner";
 import { SyncProgressBar } from "../components/SyncProgressBar";
 import { StatCard } from "../components/StatCard";
@@ -45,7 +45,7 @@ import { useLiveRefresh, useRequest } from "../lib/hooks";
 import { notifyStatusChanged } from "../lib/status";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
 
-const TABS = ["readme", "overview", "commits", "trend", "sync"] as const;
+const TABS = ["readme", "overview", "commits", "trend", "branches"] as const;
 type Tab = (typeof TABS)[number];
 
 const TAB_LABELS: Record<Tab, string> = {
@@ -53,7 +53,7 @@ const TAB_LABELS: Record<Tab, string> = {
   overview: "概览",
   commits: "提交",
   trend: "趋势",
-  sync: "同步",
+  branches: "分支",
 };
 
 interface NoticeState {
@@ -160,7 +160,7 @@ export function RepoDetailPage() {
 
   if (!data) return null;
 
-  const { repo, readme, trend, sync_runs } = data;
+  const { repo, readme, trend } = data;
   const recentCommits = data.recent_commits ?? [];
   const latestCommit = recentCommits[0];
   const activity = data.activity ?? [];
@@ -430,7 +430,7 @@ export function RepoDetailPage() {
               <div className="panel-head">
                 <div>
                   <h2>提交活跃度</h2>
-                  <p>近 52 周，按日聚合</p>
+                  <p>按日聚合 · 可切换年份</p>
                 </div>
               </div>
               <ActivityHeatmap activity={activity} ariaLabel="仓库每日提交活跃度" />
@@ -462,7 +462,13 @@ export function RepoDetailPage() {
           </>
         ))}
 
-      {tab === "sync" && <SyncHistoryPanel runs={sync_runs} />}
+      {tab === "branches" && (
+        <BranchesPanel
+          repoId={repo.id}
+          defaultBranch={repo.default_branch ?? null}
+          nextSyncAt={data.next_sync_at}
+        />
+      )}
     </>
   );
 }

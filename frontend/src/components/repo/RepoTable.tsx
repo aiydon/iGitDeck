@@ -7,6 +7,7 @@ import {
   formatDateTime,
   relativeTime,
 } from "../../lib/format";
+import { chartLanguages } from "../../lib/languages";
 import { PlatformBadge, StatusBadge } from "../Badges";
 import { ArrowUpRightIcon, RefreshIcon } from "../icons";
 import { LanguageBar } from "../LanguageBar";
@@ -21,6 +22,11 @@ interface RepoTableProps {
 }
 
 export function RepoTable({ items, retryingId, onRetry }: RepoTableProps) {
+  const rows = items.map((repo) => ({
+    repo,
+    languages: chartLanguages(repo.stats?.languages ?? []),
+  }));
+
   return (
     <div className="table-scroll">
       <table className="repo-table">
@@ -36,7 +42,7 @@ export function RepoTable({ items, retryingId, onRetry }: RepoTableProps) {
           </tr>
         </thead>
         <tbody>
-          {items.map((repo) => (
+          {rows.map(({ repo, languages }) => (
             <tr key={repo.id}>
               <td>
                 <div className="repo-cell">
@@ -68,9 +74,9 @@ export function RepoTable({ items, retryingId, onRetry }: RepoTableProps) {
               </td>
               <td>
                 <div className="language-cell">
-                  <LanguageBar languages={repo.stats?.languages ?? []} />
+                  <LanguageBar languages={languages} />
                   <span className="language-primary">
-                    {repo.stats?.languages?.[0]?.name ?? "未统计"}
+                    {languages[0]?.name ?? "未统计"}
                   </span>
                 </div>
               </td>

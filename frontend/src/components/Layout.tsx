@@ -47,19 +47,12 @@ export function Layout() {
   const autoSync = status?.auto_sync ?? false;
   const dueNow = status?.due_now ?? 0;
   const nextSync = status?.next_sync_at ?? null;
-  const cycleStart = status?.next_sync_last_attempt_at ?? null;
-
-  const cyclePercent = (() => {
-    if (!autoSync || !nextSync || !cycleStart) return 0;
-    const start = new Date(cycleStart).getTime();
-    const end = new Date(nextSync).getTime();
-    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return 0;
-    return Math.min(100, Math.max(0, ((now - start) / (end - start)) * 100));
-  })();
+  const upcoming = status?.upcoming ?? [];
+  const hasRepos = (status?.repo_count ?? 0) > 0;
 
   const scheduleLabel = !autoSync
-    ? null
-    : (status?.repo_count ?? 0) === 0
+    ? "自动同步已关闭"
+    : !hasRepos
       ? "暂无仓库"
       : dueNow > 0
         ? "即将开始"
@@ -146,28 +139,45 @@ export function Layout() {
 
         <div
           className="sidebar-schedule"
-          title="按各仓库上次同步时间与失败退避排期，取最早到期的一个"
+          title="按各仓库上次同步时间与失败退避排期，取最早到期的几个"
         >
           <span className="sidebar-status-title">调度</span>
-          {autoSync && scheduleLabel ? (
-            <>
-              <div className="schedule-row">
-                <span>下次同步</span>
-                <strong title={nextSync ?? undefined}>{scheduleLabel}</strong>
-              </div>
-              <div className="schedule-track" aria-hidden="true">
-                <span
-                  className={`schedule-fill${dueNow > 0 ? " due" : ""}`}
-                  style={{ width: `${dueNow > 0 ? 100 : cyclePercent}%` }}
-                />
-              </div>
-              <span className="schedule-meta">
-                每 {status?.sync_interval_minutes ?? "—"} 分钟 · 到期即同步
-              </span>
-            </>
+          {autoSync ? (
+            <div className="schedule-row">
+              <span>下次同步</span>
+              <strong title={nextSync ?? undefined}>{scheduleLabel}</strong>
+            </div>
           ) : (
-            <span className="schedule-off">
-              {autoSync ? "暂无待同步仓库" : "自动同步已关闭"}
+            <span className="schedule-meta">自动同步已关闭，仅手动同步</span>
+          )}
+          {upcoming.length > 0 && (
+            <ul className="sidebar-upcoming">
+              {upcoming.slice(0, 3).map((repo) => {
+                const due =
+                  !repo.next_sync_at ||
+                  new Date(repo.next_sync_at).getTime() <= now;
+                return (
+                  <li key={repo.id}>
+                    <Link
+                      className="upcoming-row"
+                      to={`/repos/${repo.id}`}
+                      title={repo.full_name}
+                    >
+                      <span>{repo.full_name}</span>
+                      <span className={`upcoming-time${due ? " upcoming-due" : ""}`}>
+                        {due
+                          ? "即将开始"
+                          : relativeTime(repo.next_sync_at, now)}
+                      </span>
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          {autoSync && hasRepos && (
+            <span className="schedule-meta">
+              每 {status?.sync_interval_minutes ?? "—"} 分钟 · 到期即同步
             </span>
           )}
         </div>

@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 import type { DayActivity } from "../../api/client";
 
@@ -34,14 +34,17 @@ interface MonthLabel {
   label: string;
 }
 
-function monthLabels(activity: DayActivity[], weeks: number): MonthLabel[] {
+function monthLabels(activity: DayActivity[], offset: number, weeks: number): MonthLabel[] {
   const starts: { week: number; label: string }[] = [];
   let current = -1;
   activity.forEach((entry, index) => {
     const month = new Date(`${entry.day}T00:00:00Z`).getUTCMonth();
     if (month === current) return;
     current = month;
-    starts.push({ week: Math.floor(index / 7), label: `${month + 1}月` });
+    starts.push({
+      week: Math.floor((index + offset) / 7),
+      label: `${month + 1}月`,
+    });
   });
 
   return starts.map((start, index) => ({
@@ -59,10 +62,39 @@ export function ActivityHeatmap({
   activity,
   ariaLabel = "每日提交活跃度",
 }: ActivityHeatmapProps) {
-  const weeks = Math.max(1, Math.ceil(activity.length / 7));
-  const levelOf = useMemo(() => buildLevelScale(activity), [activity]);
-  const months = useMemo(() => monthLabels(activity, weeks), [activity, weeks]);
-  const total = activity.reduce((sum, entry) => sum + entry.commits, 0);
+  const [selectedYear, setSelectedYear] = useState<number | null>(null);
+
+  const years = useMemo(() => {
+    const found = new Set<number>();
+    activity.forEach((entry) => {
+      found.add(new Date(`${entry.day}T00:00:00Z`).getUTCFullYear());
+    });
+    return [...found].sort((left, right) => right - left);
+  }, [activity]);
+
+  const activeYear =
+    selectedYear !== null && years.includes(selectedYear) ? selectedYear : (years[0] ?? null);
+
+  const yearActivity = useMemo(
+    () =>
+      activeYear === null
+        ? []
+        : activity.filter((entry) => entry.day.startsWith(`${activeYear}-`)),
+    [activity, activeYear],
+  );
+
+  // Sunday-first columns: pad the leading days of the January 1 week.
+  const offset =
+    yearActivity.length > 0
+      ? new Date(`${yearActivity[0].day}T00:00:00Z`).getUTCDay()
+      : 0;
+  const weeks = Math.max(1, Math.ceil((yearActivity.length + offset) / 7));
+  const levelOf = useMemo(() => buildLevelScale(yearActivity), [yearActivity]);
+  const months = useMemo(
+    () => monthLabels(yearActivity, offset, weeks),
+    [yearActivity, offset, weeks],
+  );
+  const total = yearActivity.reduce((sum, entry) => sum + entry.commits, 0);
   const columns = { gridTemplateColumns: `repeat(${weeks}, minmax(0, 1fr))` };
 
   if (activity.length === 0) {
@@ -71,6 +103,20 @@ export function ActivityHeatmap({
 
   return (
     <div className="heatmap">
+      <div className="heatmap-years" role="tablist" aria-label="选择年份">
+        {years.map((year) => (
+          <button
+            key={year}
+            type="button"
+            role="tab"
+            aria-selected={year === activeYear}
+            className={`heatmap-year${year === activeYear ? " active" : ""}`}
+            onClick={() => setSelectedYear(year)}
+          >
+            {year}
+          </button>
+        ))}
+      </div>
       <div className="heatmap-months" style={columns} aria-hidden="true">
         {months.map((month) => (
           <span
@@ -85,11 +131,23 @@ export function ActivityHeatmap({
         className="heatmap-grid"
         style={columns}
         role="img"
-        aria-label={`${ariaLabel}，共 ${total} 次提交`}
+        aria-label={`${ariaLabel}，${activeYear ?? ""} 年共 ${total} 次提交`}
       >
-        {activity.map((entry, index) => {
+        {Array.from({ length: offset }, (_, index) => (
+          <span
+            key={`spacer-${index}`}
+            className="heatmap-cell heat-0 heatmap-spacer"
+            aria-hidden="true"
+          />
+        ))}
+        {yearActivity.map((entry, index) => {
+          const position = index + offset;
           const edge =
-            index < 7 ? " edge-left" : index >= (weeks - 1) * 7 ? " edge-right" : "";
+            position < 7
+              ? " edge-left"
+              : position >= (weeks - 1) * 7
+                ? " edge-right"
+                : "";
           return (
             <span
               key={entry.day}

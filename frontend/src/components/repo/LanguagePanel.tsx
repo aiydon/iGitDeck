@@ -5,6 +5,11 @@ import { EmptyState } from "../EmptyState";
 import { CodeIcon } from "../icons";
 import { LanguageBar } from "../LanguageBar";
 
+const CATEGORY_TAGS: Record<string, string> = {
+  data: "配置",
+  prose: "文档",
+};
+
 export function LanguagePanel({ stats }: { stats: RepoStats | null }) {
   const languages = stats?.languages ?? [];
 
@@ -13,7 +18,11 @@ export function LanguagePanel({ stats }: { stats: RepoStats | null }) {
       <div className="panel-head">
         <div>
           <h2>语言构成</h2>
-          <p>{stats ? `${formatNumber(stats.code_lines)} 行代码` : "尚未统计"}</p>
+          <p>
+            {stats
+              ? `代码 ${formatNumber(stats.code_lines)} 行 · 文档/配置 ${formatNumber(stats.doc_lines)} 行`
+              : "尚未统计"}
+          </p>
         </div>
       </div>
       {languages.length === 0 ? (
@@ -24,10 +33,16 @@ export function LanguagePanel({ stats }: { stats: RepoStats | null }) {
           <ul className="detail-lang-list">
             {languages.map((language) => {
               const color = languageColor(language.name);
+              const tag = CATEGORY_TAGS[language.category];
               return (
                 <li key={language.name}>
                   <span className="lang-dot" style={{ background: color }} />
-                  <span className="detail-lang-name">{language.name}</span>
+                  <span className="detail-lang-label">
+                    <span className="detail-lang-name" title={language.name}>
+                      {language.name}
+                    </span>
+                    {tag && <span className="lang-category">{tag}</span>}
+                  </span>
                   <span className="detail-lang-track" aria-hidden="true">
                     <span
                       className="detail-lang-fill"

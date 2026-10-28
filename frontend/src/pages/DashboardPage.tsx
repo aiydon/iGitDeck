@@ -112,9 +112,9 @@ export function DashboardPage() {
               icon={<DiskIcon size={19} />}
             />
             <StatCard
-              label="代码文件"
+              label="文件"
               value={compactNumber(data.total_files)}
-              detail={`${formatNumber(data.total_files)} 个文件`}
+              detail={`${formatNumber(data.total_files)} 个文本文件`}
               icon={<FileIcon size={19} />}
             />
           </section>
