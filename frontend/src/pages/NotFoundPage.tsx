@@ -15,7 +15,7 @@ export function NotFoundPage() {
       <p>这个地址没有对应的看板页面。</p>
       <div className="empty-action">
         <Link className="button primary" to="/">
-          返回仪表盘
+          返回总览
         </Link>
       </div>
     </div>

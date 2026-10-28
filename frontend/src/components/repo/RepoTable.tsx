@@ -47,7 +47,7 @@ export function RepoTable({ items, retryingId, onRetry }: RepoTableProps) {
                     <span>{repo.owner}</span>
                     <PlatformBadge platform={repo.platform} />
                     {repo.source === "trending" && (
-                      <span className="source-hint">trending</span>
+                      <span className="source-hint">趋势</span>
                     )}
                   </div>
                   {repo.snippet ? (
@@ -59,7 +59,7 @@ export function RepoTable({ items, retryingId, onRetry }: RepoTableProps) {
                       </p>
                     )
                   )}
-                  {repo.error_message && (
+                  {repo.status === "error" && repo.error_message && (
                     <p className="repo-error-line" title={repo.error_message}>
                       {repo.error_message}
                     </p>

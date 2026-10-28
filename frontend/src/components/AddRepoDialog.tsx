@@ -51,7 +51,7 @@ export function AddRepoDialog({ onClose, onDone }: AddRepoDialogProps) {
   return (
     <Modal
       title="添加仓库"
-      subtitle="每行一个地址，可一次加入多个仓库。加入后由后台依次 clone、统计并建立索引。"
+      subtitle="每行一个地址，可一次加入多个仓库。加入后由后台依次克隆、统计并建立索引。"
       onClose={onClose}
       width={560}
     >
@@ -88,7 +88,7 @@ export function AddRepoDialog({ onClose, onDone }: AddRepoDialogProps) {
               autoFocus
               value={text}
               onChange={(event) => setText(event.target.value)}
-              placeholder={"https://github.com/owner/repo\ngit@github.com:owner/repo.git\nowner/repo"}
+              placeholder={"https://github.com/pallets/click\ngit@github.com:pallets/click.git\npallets/click"}
               rows={8}
               spellCheck={false}
               autoCapitalize="none"
@@ -96,8 +96,9 @@ export function AddRepoDialog({ onClose, onDone }: AddRepoDialogProps) {
             />
           </label>
           <p className="field-hint">
-            支持 GitHub / GitLab / Gitee / Bitbucket 的 HTTPS、SSH 地址及
-            <code>owner/repo</code> 简写；空行会被忽略，单次最多 {MAX_URLS} 个。
+            支持 GitHub / GitLab / Gitee / Bitbucket 的 HTTPS、SSH 地址，
+            以及「作者/仓库」简写（如 <code>pallets/click</code>）；空行会被忽略，单次最多{" "}
+            {MAX_URLS} 个。
             <span className="batch-count-hint">
               {urls.length > 0 ? `已识别 ${urls.length} 个地址` : "一行一个地址"}
             </span>

@@ -645,6 +645,30 @@
 }
 
 /* Toolbar ---------------------------------------------------------------- */
+.toolbar-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.toolbar-main .search-box {
+  flex: 1;
+  min-width: 0;
+}
+
+.page-toolbar {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  margin-bottom: 20px;
+}
+
+.page-toolbar .lede {
+  margin-top: 0;
+}
+
 .search-box {
   display: flex;
   align-items: center;

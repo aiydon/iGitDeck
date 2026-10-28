@@ -128,16 +128,6 @@ export function ReposPage() {
 
   return (
     <>
-      <header className="page-head">
-        <h1>仓库索引</h1>
-        <div className="head-actions">
-          <button type="button" className="button primary" onClick={() => setAddOpen(true)}>
-            <PlusIcon size={17} />
-            添加仓库
-          </button>
-        </div>
-      </header>
-
       {notice && (
         <Notice message={notice.message} tone={notice.tone} onClose={() => setNotice(null)} />
       )}
@@ -148,6 +138,7 @@ export function ReposPage() {
           facets={facets}
           onChange={updateParam}
           onReset={() => setParams(new URLSearchParams(), { replace: true })}
+          onAdd={() => setAddOpen(true)}
         />
 
         {error && !data ? (
@@ -187,7 +178,7 @@ export function ReposPage() {
             ) : (
               <div className="empty-state">
                 <h3>还没有镜像仓库</h3>
-                <p>添加一个公开仓库，或运行 Trending 爬虫自动发现。</p>
+                <p>添加一个公开仓库，或运行趋势爬虫自动发现。</p>
                 <div className="empty-action">
                   <button
                     type="button"

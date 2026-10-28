@@ -30,7 +30,7 @@ export const STATUS_OPTIONS: Option<RepoStatus>[] = [
 
 export const SOURCE_OPTIONS: Option<RepoSource>[] = [
   { value: "manual", label: "手动" },
-  { value: "trending", label: "Trending" },
+  { value: "trending", label: "趋势" },
 ];
 
 export const SORT_OPTIONS: Option<SortField>[] = [

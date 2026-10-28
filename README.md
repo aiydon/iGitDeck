@@ -67,7 +67,7 @@ make run       # uvicorn，监听 .env 中的 IGD_HOST:IGD_PORT
 列表页支持：
 
 - FTS5 全文检索：仓库名、owner、描述、README 纯文本
-- 筛选：平台、scc 语言、状态、来源（手动 / Trending）
+- 筛选：平台、scc 语言、状态、来源（手动 / 趋势）
 - 排序：添加时间、最后同步、最后提交、代码量、磁盘占用、仓库名
 - 分页与 URL 状态同步（筛选条件可直接分享）
 
@@ -149,7 +149,7 @@ src/igitdeck/
   services/
     sync.py              # clone → fetch → worktree → scc → README → 快照
     coordinator.py       # 并发上限 + 同仓库互斥
-    scheduler.py         # 到期选择 + tqdm 批量进度
+    scheduler.py         # 到期选择与批次提交
     policy.py            # 定时/失败重试退避（纯函数）
     stats_collector.py   # scc 调用与语言归一化
     trends.py            # 从 git 提交历史重建行数趋势
@@ -171,7 +171,7 @@ src/igitdeck/
   maintenance.py         # 运维 CLI（仓库删除），不暴露 HTTP
 frontend/
   src/api/schema.d.ts    # 由 `make types` 从 OpenAPI 生成（不手写）
-  src/pages/             # 仪表盘 / 仓库列表 / 仓库详情 / 同步记录（仅做编排）
+  src/pages/             # 总览 / 仓库列表 / 仓库详情 / 同步记录（仅做编排）
   src/components/        # 通用组件；repo/ 下为筛选、表格、热力图、贡献者与详情面板
   src/lib/               # 查询状态、图表配置、格式化、Hooks
   src/styles/            # tokens / base / layout / components / pages
@@ -191,6 +191,7 @@ data/
 
 - 仓库列表的事实来源是 SQLite，不是配置文件。
 - 统计快照、同步运行日志都在数据库中；磁盘占用与派生字段实时计算。
+- 进程日志写入 `<IGD_DATA_DIR>/logs/`（Web 为 `igideck.log`，爬虫与运维命令各用独立文件），超过 `IGD_LOG_MAX_BYTES` 后压缩为带时间戳的 `.gz`，仅保留最近 `IGD_LOG_BACKUPS` 份。
 - bare 镜像用于对外 clone；独立 worktree 用于 scc、README 与 raw 文件，两者共享对象库。
 - 所有从 HTTP 参数拼出的路径都会 `resolve()` 后校验仍在仓库根内。
 
@@ -233,6 +234,7 @@ data/
 | `IGD_GIT_HTTP_MAX_REQUEST_BYTES` | `8388608` | upload-pack 请求体（含解压后）上限，超出返回 413 |
 | `IGD_SCC_BINARY` / `IGD_SCC_TIMEOUT_SECONDS` | `scc` / `600` | scc 路径与超时 |
 | `IGD_GIT_INSIGHTS_MAX_COMMITS` | `100000` | 超过该提交数时只扫描最近 N 个提交，趋势图截断并在页面标注 |
+| `IGD_LOG_MAX_BYTES` / `IGD_LOG_BACKUPS` | `10485760` / `5` | 单个日志文件上限与保留的压缩备份数 |
 | `IGD_FETCH_METADATA` | `true` | 手动添加时通过 GitHub API 补全描述（失败不影响添加） |
 | `IGD_CRAWLER_API_BASE_URL` | `http://127.0.0.1:8000` | 爬虫调用主进程的地址 |
 | `IGD_CRAWLER_LANGUAGES` / `IGD_CRAWLER_SINCE` | 空 / `daily` | Trending 语言与时间范围 |
@@ -243,7 +245,7 @@ data/
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| `GET` | `/api/overview` | 仪表盘聚合（含全局提交活跃度） |
+| `GET` | `/api/overview` | 总览聚合（含全局提交活跃度） |
 | `GET` | `/api/filters` | 平台/语言/状态/来源 facets |
 | `GET` | `/api/status` | 仓库状态计数、下次同步时间、最近同步仓库与全局统计 |
 | `GET` | `/api/syncs` | 全局同步记录（按状态筛选、分页） |
@@ -308,7 +310,7 @@ make hooks       # 安装可选 commit-msg hook
 - **派生值不落库**：总代码量、语言百分比、状态计数和筛选 facets 均从最新快照实时聚合；只有昂贵的统计快照与同步日志持久化。
 - **git 是趋势的事实来源**：`repo_trends` 由默认分支的 `git log --numstat` 生成，不随同步频率漂移；`repo_snapshots` 只保留当前提交的一份统计，趋势不再依赖快照历史。
 - **按需补算**：升级或首次访问时，若当前提交尚无趋势（或旧版本只存了行数趋势），详情请求在线程池中按镜像补齐并落库；启动时也会在后台为缺失数据的已就绪仓库补算，避免首个请求等待长历史 git log。
-- **导航按任务分组**：仪表盘 / 仓库 / 同步三个入口；仓库与同步带计数徽标，侧栏底部显示同步队列状态并可直接跳到失败或待同步列表。
+- **导航按任务分组**：总览 / 仓库 / 同步三个入口；仓库与同步带计数徽标，侧栏底部显示同步队列状态并可直接跳到失败或待同步列表。
 - **更新时间只看提交**：列表与详情以 git 最后一次提交作为“更新”时间；本地同步时间单独标注为“本地镜像”。
 - **提交级一致性**：`repos.commit_sha` 记录已镜像的提交，统计快照与趋势仅在 commit 匹配时展示；同步记录按仓库保留最近 50 条。
 - **scc 单一事实来源**：语言名称与 `CodePercent` 直接来自 scc v4 JSON；前后端不维护第二套语言归一化。
@@ -326,7 +328,8 @@ make hooks       # 安装可选 commit-msg hook
 - scc 解析按 v4 JSON 输出编写；如需其他版本，请设置 `IGD_SCC_BINARY` 并确认输出字段。
 - 行数趋势统计的是 git 跟踪的文本行（含文档、配置），不等于 scc 代码行；提交数超过 `IGD_GIT_INSIGHTS_MAX_COMMITS`（默认 10 万）时只扫描最近 N 个提交，趋势页会标注截断，并用 HEAD 行数锚定绝对数值。
 - 提交活跃度统计全部提交（含 merge）；行数趋势与增删按非 merge 提交的 diff 计算，末点以镜像 HEAD 补齐。
-- 超大仓库（GB 级）clone 可达数十分钟，期间列表页处于“同步中”，属预期；超过最长同步时间会被判定失败并按退避重试。
+- 超大仓库（GB 级）首次同步可达数十分钟，期间列表页处于“同步中”，属预期。首次同步先抓默认分支，再补全其余引用：中断后再次同步会复用已完成的引用，不会从头重来；但 git 无法恢复只下载了一半的 pack 文件。超过最长同步时间会被判定失败并按退避重试。
+- 同步失败在界面只显示归类后的中文原因（网络、超时、权限、空间等），完整 git 输出写入日志文件，便于排查但不暴露本机路径。
 - 可选功能（提交热力图、Top contributors、文件树、语法高亮、License 检测、RSS 等）未实现。
 
 ## License

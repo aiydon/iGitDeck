@@ -47,11 +47,11 @@ export function Layout() {
   const autoSync = status?.auto_sync ?? false;
   const dueNow = status?.due_now ?? 0;
   const nextSync = status?.next_sync_at ?? null;
-  const lastSync = status?.last_sync_at ?? null;
+  const cycleStart = status?.next_sync_last_attempt_at ?? null;
 
   const cyclePercent = (() => {
-    if (!autoSync || !nextSync || !lastSync) return 0;
-    const start = new Date(lastSync).getTime();
+    if (!autoSync || !nextSync || !cycleStart) return 0;
+    const start = new Date(cycleStart).getTime();
     const end = new Date(nextSync).getTime();
     if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return 0;
     return Math.min(100, Math.max(0, ((now - start) / (end - start)) * 100));
@@ -80,7 +80,7 @@ export function Layout() {
         <nav className="sidebar-nav" aria-label="主导航">
           <NavLink to="/" end className={navClass}>
             <DashboardIcon size={18} />
-            <span>仪表盘</span>
+            <span>总览</span>
           </NavLink>
           <NavLink to="/repos" className={navClass}>
             <RepoIcon size={18} />
@@ -144,7 +144,10 @@ export function Layout() {
           </Link>
         </div>
 
-        <div className="sidebar-schedule">
+        <div
+          className="sidebar-schedule"
+          title="按各仓库上次同步时间与失败退避排期，取最早到期的一个"
+        >
           <span className="sidebar-status-title">调度</span>
           {autoSync && scheduleLabel ? (
             <>
@@ -159,8 +162,7 @@ export function Layout() {
                 />
               </div>
               <span className="schedule-meta">
-                每 {status?.sync_interval_minutes ?? "—"} 分钟
-                {lastSync ? ` · 上次 ${relativeTime(lastSync, now)}` : ""}
+                每 {status?.sync_interval_minutes ?? "—"} 分钟 · 到期即同步
               </span>
             </>
           ) : (

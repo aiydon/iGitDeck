@@ -9,13 +9,14 @@ import {
   STATUS_OPTIONS,
 } from "../../lib/options";
 import type { RepoQueryState } from "../../lib/repoQuery";
-import { ArrowUpDownIcon, CloseIcon, SearchIcon } from "../icons";
+import { ArrowUpDownIcon, CloseIcon, PlusIcon, SearchIcon } from "../icons";
 
 interface RepoFiltersProps {
   state: RepoQueryState;
   facets: FilterOptions | null;
   onChange: (key: string, value: string | null) => void;
   onReset: () => void;
+  onAdd: () => void;
 }
 
 function optionLabel(label: string, count: number | undefined): string {
@@ -26,7 +27,13 @@ function facetCounts(facets: FilterOptions | null, key: keyof FilterOptions) {
   return new Map((facets?.[key] ?? []).map((facet) => [facet.value, facet.count]));
 }
 
-export function RepoFilters({ state, facets, onChange, onReset }: RepoFiltersProps) {
+export function RepoFilters({
+  state,
+  facets,
+  onChange,
+  onReset,
+  onAdd,
+}: RepoFiltersProps) {
   const [search, setSearch] = useState(state.q);
   const debouncedSearch = useDebouncedValue(search, 350);
 
@@ -45,8 +52,9 @@ export function RepoFilters({ state, facets, onChange, onReset }: RepoFiltersPro
 
   return (
     <div className="list-toolbar">
-      <form
-        className="search-box"
+      <div className="toolbar-main">
+        <form
+          className="search-box"
         onSubmit={(event) => {
           event.preventDefault();
           onChange("q", search.trim() || null);
@@ -56,7 +64,7 @@ export function RepoFilters({ state, facets, onChange, onReset }: RepoFiltersPro
         <input
           value={search}
           onChange={(event) => setSearch(event.target.value)}
-          placeholder="搜索仓库、owner、描述、README…"
+          placeholder="搜索仓库、作者、描述、README…"
           aria-label="搜索仓库"
           spellCheck={false}
         />
@@ -73,7 +81,13 @@ export function RepoFilters({ state, facets, onChange, onReset }: RepoFiltersPro
             <CloseIcon size={14} />
           </button>
         )}
-      </form>
+        </form>
+
+        <button type="button" className="button primary" onClick={onAdd}>
+          <PlusIcon size={16} />
+          添加仓库
+        </button>
+      </div>
 
       <div className="filter-row">
         <label className="select-field">

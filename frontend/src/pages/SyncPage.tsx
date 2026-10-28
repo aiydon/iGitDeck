@@ -150,19 +150,16 @@ export function SyncPage() {
 
   return (
     <>
-      <header className="page-head">
-        <div>
-          <h1>同步</h1>
-          <p className="lede">
-            {system?.auto_sync
-              ? system.due_now > 0
-                ? `自动同步已开启 · ${system.due_now} 个仓库等待调度`
-                : `自动同步 · 每 ${system.sync_interval_minutes} 分钟 · 下次 ${
-                    system.next_sync_at ? relativeTime(system.next_sync_at, now) : "—"
-                  }`
-              : "自动同步已关闭，仅手动触发"}
-          </p>
-        </div>
+      <header className="page-toolbar">
+        <p className="lede">
+          {system?.auto_sync
+            ? system.due_now > 0
+              ? `自动同步已开启 · ${system.due_now} 个仓库等待调度`
+              : `自动同步 · 每 ${system.sync_interval_minutes} 分钟 · 下次 ${
+                  system.next_sync_at ? relativeTime(system.next_sync_at, now) : "—"
+                }`
+            : "自动同步已关闭，仅手动触发"}
+        </p>
         <div className="head-actions">
           <button
             type="button"

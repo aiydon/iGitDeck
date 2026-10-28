@@ -254,7 +254,7 @@ export function RepoDetailPage() {
         </div>
       </header>
 
-      {repo.error_message && (
+      {repo.status === "error" && repo.error_message && (
         <div className="error-banner">
           <AlertIcon size={19} />
           <div>

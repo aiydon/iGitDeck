@@ -32,7 +32,7 @@ import { useDocumentTitle } from "../lib/useDocumentTitle";
 export function DashboardPage() {
   const { data, loading, error, refresh } = useRequest(() => api.overview(), []);
 
-  useDocumentTitle("镜像全景 · iGitDeck");
+  useDocumentTitle("总览 · iGitDeck");
 
   const active = Boolean(
     data?.statuses.some(
@@ -62,7 +62,7 @@ export function DashboardPage() {
       <div className="panel error-panel">
         <AlertIcon size={22} />
         <div>
-          <h2>无法加载仪表盘</h2>
+          <h2>无法加载总览</h2>
           <p>{error}</p>
         </div>
         <button type="button" className="button secondary" onClick={refresh}>
@@ -79,14 +79,14 @@ export function DashboardPage() {
   return (
     <>
       <header className="page-head">
-        <h1>镜像全景</h1>
+        <h1>总览</h1>
       </header>
 
       {data.repo_count === 0 ? (
         <EmptyState
           icon={<RepoIcon size={30} />}
           title="还没有镜像仓库"
-          description="添加一个公开仓库，或让 Trending 爬虫自动发现。同步完成后，这里会出现语言分布、代码量和同步活动。"
+          description="添加一个公开仓库，或让趋势爬虫自动发现。同步完成后，这里会出现语言分布、代码量和同步活动。"
           action={
             <Link className="button primary" to="/repos?add=1">
               添加第一个仓库
