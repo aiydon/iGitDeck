@@ -757,6 +757,35 @@
   font-size: 12.5px;
 }
 
+.sync-table {
+  min-width: 980px;
+  table-layout: fixed;
+}
+
+.sync-table th:nth-child(1) { width: 84px; }
+.sync-table th:nth-child(2) { width: 220px; }
+.sync-table th:nth-child(3) { width: 64px; }
+.sync-table th:nth-child(4) { width: 96px; }
+.sync-table th:nth-child(5) { width: 96px; }
+.sync-table th:nth-child(6) { width: 96px; }
+.sync-table th:nth-child(8) { width: 84px; }
+
+.sync-table td {
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.sync-table td:nth-child(7) {
+  text-overflow: ellipsis;
+}
+
+.sync-repo {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .repo-table {
   min-width: 920px;
   table-layout: fixed;

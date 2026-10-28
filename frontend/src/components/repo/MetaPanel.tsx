@@ -1,9 +1,14 @@
 import type { RepoSummary } from "../../api/client";
-import { formatDateTime, shortSha } from "../../lib/format";
+import { formatDateTime, relativeTime, shortSha } from "../../lib/format";
 import { platformLabel, sourceLabel } from "../../lib/options";
 import { BranchIcon } from "../icons";
 
-export function MetaPanel({ repo }: { repo: RepoSummary }) {
+interface MetaPanelProps {
+  repo: RepoSummary;
+  nextSyncAt?: string | null;
+}
+
+export function MetaPanel({ repo, nextSyncAt }: MetaPanelProps) {
   return (
     <section className="panel meta-panel">
       <div className="panel-head">
@@ -45,6 +50,12 @@ export function MetaPanel({ repo }: { repo: RepoSummary }) {
           <dt>本地镜像</dt>
           <dd>{formatDateTime(repo.last_synced_at)}</dd>
         </div>
+        {nextSyncAt && (
+          <div>
+            <dt>下次同步</dt>
+            <dd>{relativeTime(nextSyncAt)}</dd>
+          </div>
+        )}
         {repo.consecutive_failures > 0 && (
           <div>
             <dt>连续失败</dt>

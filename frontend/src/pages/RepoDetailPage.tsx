@@ -329,7 +329,7 @@ export function RepoDetailPage() {
 
           <div className="detail-grid">
             <LanguagePanel stats={stats} />
-            <MetaPanel repo={repo} />
+            <MetaPanel repo={repo} nextSyncAt={data.next_sync_at} />
           </div>
         </>
       )}

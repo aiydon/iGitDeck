@@ -51,11 +51,14 @@ export function formatChartDate(value: string): string {
   return Number.isNaN(date.getTime()) ? value : CHART_DATE.format(date);
 }
 
-export function relativeTime(value: string | null | undefined): string {
+export function relativeTime(
+  value: string | null | undefined,
+  now: number = Date.now(),
+): string {
   if (!value) return "—";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
-  const seconds = Math.round((date.getTime() - Date.now()) / 1000);
+  const seconds = Math.round((date.getTime() - now) / 1000);
   const absolute = Math.abs(seconds);
   if (absolute < 45) return "刚刚";
   if (absolute < 3600) return RELATIVE.format(Math.round(seconds / 60), "minute");

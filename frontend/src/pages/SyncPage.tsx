@@ -9,10 +9,10 @@ import { Notice } from "../components/Notice";
 import type { NoticeTone } from "../components/Notice";
 import { Pagination } from "../components/Pagination";
 import { SyncRunsTable } from "../components/repo/SyncRunsTable";
-import { errorMessage } from "../lib/format";
+import { errorMessage, relativeTime } from "../lib/format";
 import { readPageParam, withQueryParam } from "../lib/repoQuery";
 import { notifyStatusChanged } from "../lib/status";
-import { useLiveRefresh, useRequest } from "../lib/hooks";
+import { useLiveRefresh, useNow, useRequest } from "../lib/hooks";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
 import { syncPhaseLabel } from "../lib/options";
 
@@ -52,6 +52,7 @@ export function SyncPage() {
   );
 
   const { data: system, refresh: refreshSystem } = useRequest(() => api.status(), []);
+  const now = useNow();
   const running = data?.items.some((run) => run.status === "running") ?? false;
   useLiveRefresh(running, refresh);
 
@@ -150,7 +151,18 @@ export function SyncPage() {
   return (
     <>
       <header className="page-head">
-        <h1>同步</h1>
+        <div>
+          <h1>同步</h1>
+          <p className="lede">
+            {system?.auto_sync
+              ? system.due_now > 0
+                ? `自动同步已开启 · ${system.due_now} 个仓库等待调度`
+                : `自动同步 · 每 ${system.sync_interval_minutes} 分钟 · 下次 ${
+                    system.next_sync_at ? relativeTime(system.next_sync_at, now) : "—"
+                  }`
+              : "自动同步已关闭，仅手动触发"}
+          </p>
+        </div>
         <div className="head-actions">
           <button
             type="button"

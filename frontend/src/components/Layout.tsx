@@ -2,7 +2,8 @@ import { useEffect, useRef } from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 
 import { api } from "../api/client";
-import { useLiveRefresh, useRequest } from "../lib/hooks";
+import { compactNumber, formatBytes, relativeTime } from "../lib/format";
+import { useLiveRefresh, useNow, useRequest } from "../lib/hooks";
 import { onStatusChanged } from "../lib/status";
 import { DashboardIcon, PlusIcon, RefreshIcon, RepoIcon } from "./icons";
 import { LogoMark } from "./Logo";
@@ -18,6 +19,7 @@ function NavBadge({ value, alert = false }: { value: number | undefined; alert?:
 export function Layout() {
   const location = useLocation();
   const { data: status, refresh } = useRequest(() => api.status(), []);
+  const now = useNow();
 
   useEffect(() => {
     window.scrollTo({ top: 0 });
@@ -31,8 +33,39 @@ export function Layout() {
   }, [location.pathname, refresh]);
 
   useLiveRefresh((status?.active ?? 0) > 0, refresh);
-
   useEffect(() => onStatusChanged(refresh), [refresh]);
+
+  // Polling stops as soon as nothing runs; take one final reading instead of
+  // leaving the sidebar showing a stale "syncing" state.
+  const wasActive = useRef(0);
+  useEffect(() => {
+    const active = status?.active ?? 0;
+    if (wasActive.current > 0 && active === 0) refresh();
+    wasActive.current = active;
+  }, [status?.active, refresh]);
+
+  const autoSync = status?.auto_sync ?? false;
+  const dueNow = status?.due_now ?? 0;
+  const nextSync = status?.next_sync_at ?? null;
+  const lastSync = status?.last_sync_at ?? null;
+
+  const cyclePercent = (() => {
+    if (!autoSync || !nextSync || !lastSync) return 0;
+    const start = new Date(lastSync).getTime();
+    const end = new Date(nextSync).getTime();
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return 0;
+    return Math.min(100, Math.max(0, ((now - start) / (end - start)) * 100));
+  })();
+
+  const scheduleLabel = !autoSync
+    ? null
+    : (status?.repo_count ?? 0) === 0
+      ? "暂无仓库"
+      : dueNow > 0
+        ? "即将开始"
+        : nextSync
+          ? relativeTime(nextSync, now)
+          : "暂无计划";
 
   return (
     <div className="app-shell">
@@ -69,26 +102,83 @@ export function Layout() {
           <span>添加仓库</span>
         </Link>
 
+        <section className="sidebar-recent">
+          <span className="sidebar-status-title">最近同步</span>
+          <ul>
+            {(status?.recent_activity ?? []).map((repo) => (
+              <li key={repo.id}>
+                <Link to={`/repos/${repo.id}`} title={repo.full_name}>
+                  <span className={`status-dot status-${repo.status}`} />
+                  <span className="recent-name">{repo.full_name}</span>
+                  <span className="recent-time">
+                    {repo.last_attempt_at
+                      ? relativeTime(repo.last_attempt_at, now)
+                      : "—"}
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+
         <div className="sidebar-status">
-          <span className="sidebar-status-title">同步状态</span>
+          <span className="sidebar-status-title">仓库状态</span>
           <Link to="/repos?status=syncing">
-            <span>同步中</span>
+            <span className="status-inline syncing">同步中</span>
             <strong>{status?.active ?? "—"}</strong>
           </Link>
           <Link
             to="/repos?status=error"
             className={status?.failed ? "alert" : undefined}
           >
-            <span>失败</span>
+            <span className="status-inline error">失败</span>
             <strong>{status?.failed ?? "—"}</strong>
           </Link>
           <Link to="/repos?status=pending">
-            <span>待同步</span>
+            <span className="status-inline pending">待同步</span>
             <strong>{status?.pending ?? "—"}</strong>
           </Link>
-          <Link to="/sync" className="sidebar-status-more">
-            全部记录
+          <Link to="/repos?status=ready">
+            <span className="status-inline ready">已就绪</span>
+            <strong>{status?.ready ?? "—"}</strong>
           </Link>
+        </div>
+
+        <div className="sidebar-schedule">
+          <span className="sidebar-status-title">调度</span>
+          {autoSync && scheduleLabel ? (
+            <>
+              <div className="schedule-row">
+                <span>下次同步</span>
+                <strong title={nextSync ?? undefined}>{scheduleLabel}</strong>
+              </div>
+              <div className="schedule-track" aria-hidden="true">
+                <span
+                  className={`schedule-fill${dueNow > 0 ? " due" : ""}`}
+                  style={{ width: `${dueNow > 0 ? 100 : cyclePercent}%` }}
+                />
+              </div>
+              <span className="schedule-meta">
+                每 {status?.sync_interval_minutes ?? "—"} 分钟
+                {lastSync ? ` · 上次 ${relativeTime(lastSync, now)}` : ""}
+              </span>
+            </>
+          ) : (
+            <span className="schedule-off">
+              {autoSync ? "暂无待同步仓库" : "自动同步已关闭"}
+            </span>
+          )}
+        </div>
+
+        <div className="sidebar-totals">
+          <div>
+            <span>代码行</span>
+            <strong>{compactNumber(status?.total_code_lines ?? 0)}</strong>
+          </div>
+          <div>
+            <span>磁盘</span>
+            <strong>{formatBytes(status?.total_disk_bytes ?? 0)}</strong>
+          </div>
         </div>
       </aside>
 
