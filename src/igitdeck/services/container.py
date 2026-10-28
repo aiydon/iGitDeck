@@ -18,12 +18,14 @@ from igitdeck.services.files import FileService
 from igitdeck.services.git_http import GitHttpService
 from igitdeck.services.history import CommitService
 from igitdeck.services.metadata import MetadataClient
+from igitdeck.services.network import NetworkService
 from igitdeck.services.policy import SyncPolicy
 from igitdeck.services.progress import ProgressTracker
 from igitdeck.services.readme import ReadmeService
 from igitdeck.services.scheduler import SyncScheduler
 from igitdeck.services.stats_collector import SccStatsCollector
 from igitdeck.services.sync import SyncService
+from igitdeck.services.tree import TreeService
 from igitdeck.services.trends import TrendService
 
 
@@ -41,6 +43,8 @@ class Container:
         progress: ProgressTracker,
         history: CommitService,
         branches: BranchService,
+        tree: TreeService,
+        network: NetworkService,
         policy: SyncPolicy,
         readme: ReadmeService,
         files: FileService,
@@ -62,6 +66,8 @@ class Container:
         self.progress = progress
         self.history = history
         self.branches = branches
+        self.tree = tree
+        self.network = network
         self.policy = policy
         self.readme = readme
         self.files = files
@@ -103,6 +109,8 @@ def build_container(settings: Settings) -> Container:
     progress = ProgressTracker()
     history = CommitService(git, paths)
     branches = BranchService(git, paths)
+    tree = TreeService(git, paths)
+    network = NetworkService(git, paths)
     collector = SccStatsCollector(settings.scc_binary, settings.scc_timeout_seconds)
     sync = SyncService(
         repos=repos,
@@ -165,6 +173,8 @@ def build_container(settings: Settings) -> Container:
         progress=progress,
         history=history,
         branches=branches,
+        tree=tree,
+        network=network,
         policy=policy,
         readme=readme,
         files=files,

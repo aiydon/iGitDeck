@@ -16,6 +16,7 @@ from pydantic import BaseModel, computed_field
 
 from igitdeck.clock import from_epoch
 from igitdeck.models.branches import BranchInfo
+from igitdeck.models.network import NetworkCommit
 from igitdeck.models.repo import CommitSummary
 
 ProgressCallback = Callable[[str, int], None]
@@ -501,6 +502,58 @@ class GitClient:
             if separator and count.isdigit():
                 total += int(count)
         return total
+
+    def tree_entries(self, bare: Path, ref: str) -> list[tuple[str, int]]:
+        """Blob paths and byte sizes at `ref`, from one recursive `ls-tree` pass."""
+        result = self._run(["--git-dir", str(bare), "ls-tree", "-r", "-l", "-z", ref])
+        entries: list[tuple[str, int]] = []
+        for record in result.stdout.split("\x00"):
+            metadata, separator, path = record.partition("\t")
+            if not separator or not path:
+                continue
+            fields = metadata.split()
+            if len(fields) != 4:
+                continue
+            _mode, kind, _sha, size = fields
+            if kind != "blob" or not size.isdigit():
+                continue
+            entries.append((path, int(size)))
+        return entries
+
+    def first_parent_log(self, bare: Path, branch: str, limit: int = 30) -> list[NetworkCommit]:
+        """Newest commits on `branch` following only the first-parent chain."""
+        result = self._run(
+            [
+                "--git-dir",
+                str(bare),
+                "log",
+                "--first-parent",
+                f"-n{max(1, limit)}",
+                "--format=%H%x1f%P%x1f%ct%x1f%an%x1f%s",
+                f"refs/heads/{branch}",
+            ]
+        )
+        commits: list[NetworkCommit] = []
+        for line in result.stdout.splitlines():
+            fields = line.split("\x1f", 4)
+            if len(fields) != 5:
+                continue
+            sha, parents, timestamp, author, message = fields
+            if not sha or not timestamp.isdigit():
+                continue
+            committed_at = from_epoch(int(timestamp))
+            if committed_at is None:
+                continue
+            commits.append(
+                NetworkCommit(
+                    sha=sha,
+                    parents=parents.split(),
+                    committed_at=committed_at,
+                    author=author,
+                    message=message,
+                )
+            )
+        return commits
 
     def commit_authors(
         self, bare: Path, branch: str, *, max_commits: int | None = None
