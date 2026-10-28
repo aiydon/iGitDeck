@@ -1,0 +1,130 @@
+/* Directory treemap ------------------------------------------------------ */
+.treemap-panel {
+  overflow: hidden;
+}
+
+.treemap-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.treemap-head h2 {
+  font-size: 16px;
+  letter-spacing: -0.02em;
+}
+
+.treemap-head p {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.treemap-summary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.treemap-summary strong {
+  color: var(--fg);
+  font-weight: 600;
+}
+
+.treemap-summary .mono {
+  color: var(--faint);
+  font-size: 11px;
+}
+
+.treemap-note {
+  color: var(--accent);
+  font-weight: 550;
+}
+
+.treemap-toggle {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-soft);
+}
+
+.treemap-toggle button {
+  padding: 6px 13px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  transition:
+    background 0.16s ease,
+    border-color 0.16s ease,
+    color 0.16s ease;
+}
+
+.treemap-toggle button:hover {
+  color: var(--fg);
+}
+
+.treemap-toggle button.active {
+  border-color: var(--border);
+  background: var(--surface);
+  color: var(--accent);
+  box-shadow: var(--shadow-sm);
+}
+
+.treemap-chart {
+  margin-top: 2px;
+}
+
+.treemap-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 220px;
+  padding: 24px;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+@media (max-width: 560px) {
+  .treemap-head {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .treemap-toggle {
+    align-self: flex-start;
+  }
+
+  .treemap-summary {
+    gap: 5px 14px;
+    font-size: 11.5px;
+  }
+
+  .treemap-summary .mono {
+    display: none;
+  }
+
+  .treemap-toggle button {
+    padding: 6px 11px;
+    font-size: 11.5px;
+  }
+}

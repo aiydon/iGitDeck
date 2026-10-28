@@ -3,6 +3,10 @@ import { useMemo, useState } from "react";
 import type { DayActivity } from "../../api/client";
 
 const MAX_LEVEL = 4;
+const WEEKS = 53;
+const ROWS = 7;
+const TOTAL_CELLS = WEEKS * ROWS;
+const DAY_MS = 86_400_000;
 
 /**
  * Quantile levels over the days that actually have commits. Absolute thresholds
@@ -34,23 +38,58 @@ interface MonthLabel {
   label: string;
 }
 
-function monthLabels(activity: DayActivity[], offset: number, weeks: number): MonthLabel[] {
-  const starts: { week: number; label: string }[] = [];
-  let current = -1;
-  activity.forEach((entry, index) => {
-    const month = new Date(`${entry.day}T00:00:00Z`).getUTCMonth();
-    if (month === current) return;
-    current = month;
-    starts.push({
-      week: Math.floor((index + offset) / 7),
-      label: `${month + 1}月`,
-    });
-  });
+interface YearCell {
+  day: string;
+  commits: number;
+}
 
-  return starts.map((start, index) => ({
+interface YearGrid {
+  cells: (YearCell | null)[];
+  months: MonthLabel[];
+  total: number;
+}
+
+/**
+ * A year is always laid out on the same 53x7 canvas. January 1 lands on its
+ * weekday row, the remaining days follow in reading order, and everything that
+ * does not fall inside the selected year stays an empty placeholder.
+ */
+function buildYearGrid(year: number, commitsByDay: Map<string, number>): YearGrid {
+  const firstDay = Date.UTC(year, 0, 1);
+  const nextYear = Date.UTC(year + 1, 0, 1);
+  const daysInYear = Math.round((nextYear - firstDay) / DAY_MS);
+  const startWeekday = new Date(firstDay).getUTCDay();
+  // 53 weeks only fit 371 cells; a leap year starting on Saturday needs 372.
+  const offset = Math.min(startWeekday, TOTAL_CELLS - daysInYear);
+
+  const cells: (YearCell | null)[] = Array.from({ length: TOTAL_CELLS }, () => null);
+  let total = 0;
+  for (let index = 0; index < daysInYear; index += 1) {
+    const position = index + offset;
+    if (position >= TOTAL_CELLS) break;
+    const day = new Date(firstDay + index * DAY_MS).toISOString().slice(0, 10);
+    const commits = commitsByDay.get(day) ?? 0;
+    total += commits;
+    cells[position] = { day, commits };
+  }
+
+  const starts = Array.from({ length: 12 }, (_, month) => {
+    const position = Math.round((Date.UTC(year, month, 1) - firstDay) / DAY_MS) + offset;
+    return {
+      week: Math.floor(position / 7),
+      label: `${month + 1}月`,
+      visible: position < TOTAL_CELLS,
+    };
+  })
+    .filter((start) => start.visible)
+    .map(({ week, label }) => ({ week, label }));
+
+  const months = starts.map((start, index) => ({
     ...start,
-    span: (starts[index + 1]?.week ?? weeks) - start.week,
+    span: (starts[index + 1]?.week ?? WEEKS) - start.week,
   }));
+
+  return { cells, months, total };
 }
 
 interface ActivityHeatmapProps {
@@ -72,32 +111,26 @@ export function ActivityHeatmap({
     return [...found].sort((left, right) => right - left);
   }, [activity]);
 
+  // One scale for every year, so switching tabs only changes the shading.
+  const levelOf = useMemo(() => buildLevelScale(activity), [activity]);
+
   const activeYear =
     selectedYear !== null && years.includes(selectedYear) ? selectedYear : (years[0] ?? null);
 
-  const yearActivity = useMemo(
-    () =>
-      activeYear === null
-        ? []
-        : activity.filter((entry) => entry.day.startsWith(`${activeYear}-`)),
-    [activity, activeYear],
-  );
+  const yearGrid = useMemo(() => {
+    if (activeYear === null) return null;
+    const commitsByDay = new Map<string, number>();
+    activity.forEach((entry) => {
+      if (entry.day.startsWith(`${activeYear}-`)) {
+        commitsByDay.set(entry.day, entry.commits);
+      }
+    });
+    return buildYearGrid(activeYear, commitsByDay);
+  }, [activity, activeYear]);
 
-  // Sunday-first columns: pad the leading days of the January 1 week.
-  const offset =
-    yearActivity.length > 0
-      ? new Date(`${yearActivity[0].day}T00:00:00Z`).getUTCDay()
-      : 0;
-  const weeks = Math.max(1, Math.ceil((yearActivity.length + offset) / 7));
-  const levelOf = useMemo(() => buildLevelScale(yearActivity), [yearActivity]);
-  const months = useMemo(
-    () => monthLabels(yearActivity, offset, weeks),
-    [yearActivity, offset, weeks],
-  );
-  const total = yearActivity.reduce((sum, entry) => sum + entry.commits, 0);
-  const columns = { gridTemplateColumns: `repeat(${weeks}, minmax(0, 1fr))` };
+  const columns = { gridTemplateColumns: `repeat(${WEEKS}, minmax(0, 1fr))` };
 
-  if (activity.length === 0) {
+  if (activity.length === 0 || !yearGrid) {
     return <p className="muted heatmap-empty">暂无可用的提交历史</p>;
   }
 
@@ -118,7 +151,7 @@ export function ActivityHeatmap({
         ))}
       </div>
       <div className="heatmap-months" style={columns} aria-hidden="true">
-        {months.map((month) => (
+        {yearGrid.months.map((month) => (
           <span
             key={`${month.week}-${month.label}`}
             style={{ gridColumn: `${month.week + 1} / span ${month.span}` }}
@@ -131,34 +164,31 @@ export function ActivityHeatmap({
         className="heatmap-grid"
         style={columns}
         role="img"
-        aria-label={`${ariaLabel}，${activeYear ?? ""} 年共 ${total} 次提交`}
+        aria-label={`${ariaLabel}，${activeYear} 年共 ${yearGrid.total} 次提交`}
       >
-        {Array.from({ length: offset }, (_, index) => (
-          <span
-            key={`spacer-${index}`}
-            className="heatmap-cell heat-0 heatmap-spacer"
-            aria-hidden="true"
-          />
-        ))}
-        {yearActivity.map((entry, index) => {
-          const position = index + offset;
+        {yearGrid.cells.map((cell, index) => {
+          if (!cell) {
+            return (
+              <span
+                key={`empty-${index}`}
+                className="heatmap-cell heat-empty"
+                aria-hidden="true"
+              />
+            );
+          }
           const edge =
-            position < 7
-              ? " edge-left"
-              : position >= (weeks - 1) * 7
-                ? " edge-right"
-                : "";
+            index < 7 ? " edge-left" : index >= (WEEKS - 1) * ROWS ? " edge-right" : "";
           return (
             <span
-              key={entry.day}
-              className={`heatmap-cell heat-${levelOf(entry.commits)}${edge}`}
-              data-tip={`${entry.day} · ${entry.commits} 次提交`}
+              key={cell.day}
+              className={`heatmap-cell heat-${levelOf(cell.commits)}${edge}`}
+              data-tip={`${cell.day} · ${cell.commits} 次提交`}
             />
           );
         })}
       </div>
       <div className="heatmap-legend">
-        <span>{total} 次提交</span>
+        <span>{yearGrid.total} 次提交</span>
         <span className="heatmap-legend-scale" aria-hidden="true">
           少
           {Array.from({ length: MAX_LEVEL + 1 }, (_, level) => (

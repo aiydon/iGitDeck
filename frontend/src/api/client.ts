@@ -24,8 +24,11 @@ export type BulkRetryResult = components["schemas"]["BulkRetryResult"];
 export type ProgressSnapshot = components["schemas"]["ProgressSnapshot"];
 export type ActiveSync = components["schemas"]["ActiveSync"];
 export type CommitSummary = components["schemas"]["CommitSummary"];
-export type BranchInfo = components["schemas"]["BranchInfo"];
-export type BranchList = components["schemas"]["BranchList"];
+export type RepoTree = components["schemas"]["RepoTree"];
+export type TreeNode = components["schemas"]["TreeNode"];
+export type RepoNetwork = components["schemas"]["RepoNetwork"];
+export type NetworkBranch = components["schemas"]["NetworkBranch"];
+export type NetworkCommit = components["schemas"]["NetworkCommit"];
 export type SystemStatus = components["schemas"]["SystemStatus"];
 export type DayActivity = components["schemas"]["DayActivity"];
 export type MonthChurn = components["schemas"]["MonthChurn"];
@@ -107,8 +110,8 @@ export const api = {
     }),
   getRepo: (repoId: number) => request<RepoDetail>(`/api/repos/${repoId}`),
   status: () => request<SystemStatus>("/api/status"),
-  branches: (repoId: number) =>
-    request<BranchList>(`/api/repos/${repoId}/branches`),
+  tree: (repoId: number) => request<RepoTree>(`/api/repos/${repoId}/tree`),
+  network: (repoId: number) => request<RepoNetwork>(`/api/repos/${repoId}/network`),
   listSyncs: (params: SyncListParams) => request<SyncRunPage>(`/api/syncs${toQuery(params)}`),
   retryFailed: () =>
     request<BulkRetryResult>("/api/syncs/retry-failed", { method: "POST" }),

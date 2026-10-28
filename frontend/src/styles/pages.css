@@ -1144,10 +1144,6 @@ a.lang-legend-name:hover {
   background: var(--surface-soft);
 }
 
-.heatmap-cell.heatmap-spacer {
-  background: transparent;
-}
-
 .heatmap-cell:hover {
   z-index: 5;
   outline: 1px solid var(--fg);
@@ -1185,6 +1181,14 @@ a.lang-legend-name:hover {
 
 .heat-0 {
   background: var(--surface-soft);
+}
+
+.heat-empty {
+  background: transparent;
+}
+
+.heatmap-cell.heat-empty:hover {
+  outline: none;
 }
 
 .heat-1 {
@@ -1243,139 +1247,193 @@ a.lang-legend-name:hover {
   }
 }
 
-/* Branches --------------------------------------------------------------- */
-.branch-list {
-  display: flex;
-  flex-direction: column;
-  margin: 12px 0 0;
-  padding: 0;
-  list-style: none;
-}
-
-.branch-row {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  padding: 12px 0;
-  border-bottom: 1px solid var(--border);
-}
-
-.branch-row:last-child {
-  border-bottom: 0;
-}
-
-.branch-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
+/* Branch network --------------------------------------------------------- */
+.branch-network {
+  position: relative;
   min-width: 0;
 }
 
-.branch-name {
-  max-width: 100%;
+.network-head h2 {
+  margin: 0;
+}
+
+.network-head p {
+  margin: 3px 0 0;
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+.network-body {
+  display: flex;
+  gap: 12px;
+  min-width: 0;
+  margin-top: 16px;
+}
+
+.network-labels {
+  display: flex;
+  flex: 0 0 156px;
+  flex-direction: column;
+  min-width: 0;
+  padding-top: 12px;
+}
+
+.network-row-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding-right: 9px;
   overflow: hidden;
-  color: var(--fg);
-  font-size: 12.5px;
-  font-weight: 600;
+  border-right: 1px solid var(--border);
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.network-row-label > span:first-child {
+  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.branch-chip {
-  padding: 1px 6px;
-  border-radius: 999px;
-  background: var(--accent-soft);
+.network-row-label.is-default {
   color: var(--accent);
-  font-size: 9.5px;
   font-weight: 600;
 }
 
-.branch-delta {
+.network-default-chip {
+  flex: 0 0 auto;
   padding: 1px 5px;
-  border-radius: 5px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-family: var(--sans);
+  font-size: 9px;
+  font-weight: 600;
+}
+
+.network-canvas {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.network-canvas-inner {
+  position: relative;
+}
+
+.branch-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.network-row-line {
+  stroke: color-mix(in srgb, var(--muted) 42%, transparent);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+}
+
+.network-row-line.is-default {
+  stroke: color-mix(in srgb, var(--accent) 72%, transparent);
+}
+
+.network-edge {
+  stroke: color-mix(in srgb, var(--muted) 36%, transparent);
+  stroke-width: 1;
+  stroke-linecap: round;
+}
+
+.network-dot {
+  fill: var(--muted);
+  stroke: var(--surface);
+  stroke-width: 1;
+  cursor: pointer;
+}
+
+.network-dot.is-default {
+  fill: var(--accent);
+}
+
+.network-dot:hover {
+  fill: var(--fg);
+  stroke: var(--accent-soft);
+}
+
+.network-dot.is-default:hover {
+  fill: var(--accent);
+  stroke: var(--accent-soft);
+}
+
+.network-tooltip {
+  position: absolute;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: 240px;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 10px 30px color-mix(in srgb, var(--fg) 14%, transparent);
+  font-size: 11px;
+  line-height: 1.4;
+  pointer-events: none;
+  transform: translate(-50%, calc(-100% - 8px));
+}
+
+.network-tooltip.below {
+  transform: translate(-50%, 12px);
+}
+
+.network-tooltip strong {
+  color: var(--fg);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.network-tooltip-meta {
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.network-tooltip code {
+  color: var(--faint);
   font-family: var(--mono);
   font-size: 10px;
 }
 
-.branch-delta.ahead {
-  background: color-mix(in srgb, var(--success) 14%, transparent);
-  color: var(--success);
-}
-
-.branch-delta.behind {
-  background: color-mix(in srgb, var(--muted) 16%, transparent);
-  color: var(--muted);
-}
-
-.branch-time {
-  margin-left: auto;
-  color: var(--faint);
-  font-size: 10.5px;
-  white-space: nowrap;
-}
-
-.branch-commit {
-  margin: 0;
-  overflow: hidden;
-  color: var(--fg-soft);
-  font-size: 12px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.branch-foot {
+.network-loading {
   display: flex;
   align-items: center;
-  gap: 10px;
-  min-width: 0;
-}
-
-.branch-author {
-  overflow: hidden;
-  color: var(--faint);
-  font-size: 10.5px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.branch-diverge {
-  display: flex;
-  flex: 0 1 180px;
-  height: 3px;
-  overflow: hidden;
-  border-radius: 999px;
-  background: var(--surface-soft);
-}
-
-.branch-diverge-ahead {
-  height: 100%;
-  background: var(--accent);
-}
-
-.branch-diverge-behind {
-  height: 100%;
-  background: color-mix(in srgb, var(--muted) 50%, transparent);
-}
-
-.branch-loading {
+  gap: 8px;
   padding: 18px 0;
   font-size: 12.5px;
 }
 
-.branch-note {
+.network-note {
   margin: 10px 0 0;
   color: var(--faint);
   font-size: 10.5px;
 }
 
-@media (max-width: 700px) {
-  .branch-time {
-    margin-left: 0;
+@media (max-width: 760px) {
+  .network-labels {
+    flex-basis: 108px;
   }
 
-  .branch-diverge {
-    flex-basis: 120px;
+  .network-row-label {
+    font-size: 10.5px;
+  }
+
+  .network-default-chip {
+    padding: 0 4px;
+    font-size: 8.5px;
   }
 }
 
