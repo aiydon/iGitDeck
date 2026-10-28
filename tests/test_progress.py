@@ -166,3 +166,47 @@ def test_progress_is_cleared_once_the_repository_is_ready(
 
     assert container.repos.get(record.id).status.value == "ready"
     assert container.progress.get(record.id) is None
+
+
+def test_stream_aborts_when_transfer_stalls(tmp_path: Path) -> None:
+    script = _script(
+        tmp_path,
+        "fake-git",
+        "\n".join(
+            [
+                "import time",
+                "print('Receiving objects:  10% (1/10)', flush=True)",
+                "time.sleep(20)",
+            ]
+        ),
+    )
+    client = GitClient(timeout_seconds=30, idle_timeout_seconds=1, binary=str(script))
+
+    with pytest.raises(GitCommandError, match="没有传输进展"):
+        client.clone_mirror("https://example.com/repo.git", tmp_path / "x", lambda *_: None)
+
+
+def test_stream_allows_long_transfers_that_keep_reporting(tmp_path: Path) -> None:
+    script = _script(
+        tmp_path,
+        "fake-git",
+        "\n".join(
+            [
+                "import time",
+                "for percent in range(0, 101, 10):",
+                "    print(f'Receiving objects: {percent}% (1/10)', flush=True)",
+                "    time.sleep(0.4)",
+            ]
+        ),
+    )
+    # Idle limit is far below the 4s runtime: only total silence would abort.
+    client = GitClient(timeout_seconds=30, idle_timeout_seconds=2, binary=str(script))
+    seen: list[int] = []
+
+    client.clone_mirror(
+        "https://example.com/repo.git",
+        tmp_path / "ok",
+        lambda _phase, percent: seen.append(percent),
+    )
+
+    assert seen == list(range(0, 101, 10))

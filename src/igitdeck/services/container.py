@@ -87,7 +87,10 @@ def build_container(settings: Settings) -> Container:
         enabled=settings.fetch_metadata,
         timeout_seconds=settings.metadata_timeout_seconds,
     )
-    git = GitClient(settings.git_timeout_seconds)
+    git = GitClient(
+        settings.git_timeout_seconds,
+        idle_timeout_seconds=settings.git_idle_timeout_seconds,
+    )
     policy = SyncPolicy(
         interval_seconds=settings.sync_interval_minutes * 60,
         retry_base_seconds=settings.sync_retry_base_minutes * 60,

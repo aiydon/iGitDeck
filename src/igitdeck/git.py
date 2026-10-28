@@ -6,6 +6,7 @@ import os
 import re
 import subprocess
 import threading
+import time
 from collections import deque
 from collections.abc import Callable
 from pathlib import Path
@@ -60,8 +61,17 @@ class CommitAuthor(BaseModel):
 
 
 class GitClient:
-    def __init__(self, timeout_seconds: int, binary: str = "git") -> None:
+    def __init__(
+        self,
+        timeout_seconds: int,
+        idle_timeout_seconds: int | None = None,
+        binary: str = "git",
+    ) -> None:
         self.timeout_seconds = timeout_seconds
+        # Large mirrors legitimately spend hours transferring; what actually
+        # indicates a problem is a stalled transfer, so streamed commands are
+        # bounded by inactivity instead of wall-clock time alone.
+        self.idle_timeout_seconds = idle_timeout_seconds
         self.binary = binary
 
     @staticmethod
@@ -100,8 +110,8 @@ class GitClient:
     def _stream(self, args: list[str], on_progress: ProgressCallback) -> None:
         """Run git with progress on stderr, reporting it as it arrives.
 
-        stderr is merged into stdout and read line by line. A timer kills the
-        process when the timeout elapses, which also unblocks the reader.
+        stderr is merged into stdout and read line by line. A watchdog kills the
+        process on inactivity (or the hard cap), which also unblocks the reader.
         """
         command = [self.binary, *args]
         try:
@@ -116,15 +126,30 @@ class GitClient:
         except FileNotFoundError as exc:
             raise GitCommandError("系统未安装 git") from exc
 
-        timed_out = threading.Event()
+        stop = threading.Event()
+        reason: list[str] = []
+        last_activity = [time.monotonic()]
 
-        def kill() -> None:
-            timed_out.set()
-            process.kill()
+        def watchdog() -> None:
+            deadline = time.monotonic() + self.timeout_seconds
+            while not stop.wait(0.5):
+                if process.poll() is not None:
+                    return
+                now = time.monotonic()
+                if (
+                    self.idle_timeout_seconds is not None
+                    and now - last_activity[0] > self.idle_timeout_seconds
+                ):
+                    reason.append(f"超过 {self.idle_timeout_seconds}s 没有传输进展")
+                    process.kill()
+                    return
+                if now > deadline:
+                    reason.append(f"超过 {self.timeout_seconds}s 未完成")
+                    process.kill()
+                    return
 
-        timer = threading.Timer(self.timeout_seconds, kill)
-        timer.daemon = True
-        timer.start()
+        watcher = threading.Thread(target=watchdog, daemon=True)
+        watcher.start()
 
         output: deque[str] = deque(maxlen=40)
         messages: deque[str] = deque(maxlen=20)
@@ -135,6 +160,7 @@ class GitClient:
                 line = raw.strip()
                 if not line:
                     continue
+                last_activity[0] = time.monotonic()
                 output.append(line)
                 progress = parse_progress_line(line)
                 if progress is None:
@@ -143,7 +169,8 @@ class GitClient:
                     on_progress(*progress)
             returncode = process.wait()
         finally:
-            timer.cancel()
+            stop.set()
+            watcher.join(timeout=2)
             if process.stdout is not None:
                 process.stdout.close()
             if process.poll() is None:
@@ -151,8 +178,8 @@ class GitClient:
                 process.wait()
 
         command_name = args[0]
-        if timed_out.is_set():
-            raise GitCommandError(f"git {command_name} 超过 {self.timeout_seconds}s 未完成")
+        if reason:
+            raise GitCommandError(f"git {command_name} {reason[0]}")
         if returncode != 0:
             detail = "\n".join(messages) or "\n".join(output) or f"exit {returncode}"
             raise GitCommandError(f"git {command_name} 失败: {detail[-2000:]}")

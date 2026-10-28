@@ -34,15 +34,11 @@ class FilterOptions(BaseModel):
     languages: list[Facet]
 
 
-class Totals(BaseModel):
-    code_lines: int = Field(ge=0)
-    disk_bytes: int = Field(ge=0)
-    file_count: int = Field(ge=0)
-
-
 class LanguageTotal(BaseModel):
     name: str
     code_lines: int
+    files: int
+    bytes: int
     repos: int
 
 

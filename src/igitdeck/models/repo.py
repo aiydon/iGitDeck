@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import json
 import re
-from collections.abc import Sequence
 from datetime import date, datetime
 from enum import StrEnum
 from urllib.parse import unquote, urlsplit
@@ -72,25 +70,15 @@ class SortOrder(StrEnum):
 
 
 class LanguageStat(BaseModel):
+    """One language as scc reported it; `percent` is a byte share."""
+
     name: str
     code: int = Field(ge=0)
     comment: int = Field(ge=0)
     blank: int = Field(ge=0)
     files: int = Field(ge=0)
-    percent: float
-
-    @classmethod
-    def decode_many(cls, payload: str) -> list[LanguageStat]:
-        """Read the JSON array stored in `repo_snapshots.languages`."""
-        return [cls.model_validate(item) for item in json.loads(payload)]
-
-    @classmethod
-    def encode_many(cls, languages: Sequence[LanguageStat]) -> str:
-        return json.dumps(
-            [language.model_dump(mode="json") for language in languages],
-            ensure_ascii=False,
-            separators=(",", ":"),
-        )
+    bytes: int = Field(default=0, ge=0)
+    percent: float = 0.0
 
 
 class RepoStats(BaseModel):

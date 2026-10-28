@@ -33,14 +33,28 @@ SCC_FIXTURE = [
 ]
 
 
-def test_parse_scc_json_normalizes_languages() -> None:
+def test_parse_scc_json_keeps_only_chartable_languages() -> None:
     languages = parse_scc_json(json.dumps(SCC_FIXTURE))
-    assert [language.name for language in languages] == ["Python", "Markdown"]
+    # Markdown is prose, so GitHub's language bar does not chart it.
+    assert [language.name for language in languages] == ["Python"]
     assert languages[0].code == 120
     assert languages[0].comment == 10
     assert languages[0].blank == 20
     assert languages[0].files == 3
-    assert languages[0].percent == 80.0
+    assert languages[0].percent == 100.0
+
+
+def test_parse_scc_json_uses_byte_shares() -> None:
+    payload = [
+        {"Name": "Python", "Code": 10, "Comment": 0, "Blank": 0, "Count": 1, "Bytes": 300},
+        {"Name": "JSON", "Code": 900, "Comment": 0, "Blank": 0, "Count": 1, "Bytes": 900},
+        {"Name": "TypeScript", "Code": 10, "Comment": 0, "Blank": 0, "Count": 1, "Bytes": 700},
+    ]
+    languages = parse_scc_json(json.dumps(payload))
+    assert [(language.name, language.percent) for language in languages] == [
+        ("TypeScript", 70.0),
+        ("Python", 30.0),
+    ]
 
 
 @pytest.mark.parametrize(
@@ -80,12 +94,12 @@ def test_scc_collector_invokes_binary_and_sums_totals(tmp_path: Path) -> None:
     collector = SccStatsCollector(str(script), timeout_seconds=10)
     result = collector.collect(tree, disk_roots=[tree])
 
-    assert result.code_lines == 150
+    assert result.code_lines == 120
     assert result.comment_lines == 10
-    assert result.blank_lines == 25
-    assert result.file_count == 4
+    assert result.blank_lines == 20
+    assert result.file_count == 3
     assert result.disk_bytes == 12
-    assert len(result.languages) == 2
+    assert [language.name for language in result.languages] == ["Python"]
 
 
 def test_scc_collector_missing_binary(tmp_path: Path) -> None:

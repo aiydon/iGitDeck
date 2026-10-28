@@ -41,7 +41,10 @@ class Settings(BaseModel):
     sync_batch_size: int = Field(32, ge=1, le=1000)
 
     # Git and code statistics
-    git_timeout_seconds: int = Field(1800, ge=10)
+    # Hard cap per git invocation, regardless of activity.
+    git_timeout_seconds: int = Field(3600, ge=10)
+    # Streamed clone/fetch is aborted only when git stops reporting progress.
+    git_idle_timeout_seconds: int = Field(300, ge=10)
     git_http_concurrency: int = Field(4, ge=1, le=64)
     git_http_timeout_seconds: int = Field(1800, ge=10)
     git_http_max_request_bytes: int = Field(8 * 1024 * 1024, ge=1024)
@@ -80,11 +83,12 @@ class Settings(BaseModel):
     def sync_stale_after_seconds(self) -> int:
         """Longest legitimate sync, with slack.
 
-        One run may invoke git twice (fetch + worktree reset) before scc and the
-        optional metadata lookup; anything older than this belongs to a lost task.
+        A sync may run several git commands plus scc; anything older than this
+        belongs to a task whose worker vanished (the idle watchdog already kills
+        hangs, so this only catches lost threads).
         """
         return (
-            2 * self.git_timeout_seconds
+            3 * self.git_timeout_seconds
             + self.scc_timeout_seconds
             + self.metadata_timeout_seconds
             + 300

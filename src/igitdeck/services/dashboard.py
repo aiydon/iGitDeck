@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from igitdeck.clock import utcnow
+from igitdeck.languages import is_counted
 from igitdeck.models.dashboard import (
     LanguageSlice,
     Overview,
@@ -53,7 +54,10 @@ class DashboardService:
             if (moment := self.policy.next_due_at(repo, now)) is not None
         ]
         next_pair = min(upcoming, key=lambda item: item[0]) if upcoming else None
-        totals = self.stats.totals()
+        disk_bytes = self.stats.disk_bytes()
+        counted = [
+            language for language in self.stats.language_totals() if is_counted(language.name)
+        ]
 
         recent = self.repos.recently_active(8)
 
@@ -70,8 +74,8 @@ class DashboardService:
                 next_pair[1].last_attempt_at if self.auto_sync and next_pair else None
             ),
             due_now=due,
-            total_code_lines=totals.code_lines,
-            total_disk_bytes=totals.disk_bytes,
+            total_code_lines=sum(language.code_lines for language in counted),
+            total_disk_bytes=disk_bytes,
             recent_activity=[
                 SidebarRepo(
                     id=repo.id,
@@ -85,9 +89,11 @@ class DashboardService:
 
     def overview(self) -> Overview:
         status_counts = self.repos.counts_by(FacetField.STATUS)
-        totals = self.stats.totals()
-        language_totals = self.stats.language_totals()
-        language_code_total = sum(language.code_lines for language in language_totals)
+        disk_bytes = self.stats.disk_bytes()
+        language_totals = [
+            language for language in self.stats.language_totals() if is_counted(language.name)
+        ]
+        language_weight = sum(language.bytes or language.code_lines for language in language_totals)
 
         recent_repos = self.catalog.list_repos(
             RepoQuery(
@@ -100,9 +106,9 @@ class DashboardService:
 
         return Overview(
             repo_count=sum(status_counts.values()),
-            total_code_lines=totals.code_lines,
-            total_disk_bytes=totals.disk_bytes,
-            total_files=totals.file_count,
+            total_code_lines=sum(language.code_lines for language in language_totals),
+            total_disk_bytes=disk_bytes,
+            total_files=sum(language.files for language in language_totals),
             statuses=[
                 StatusSlice(status=status, count=status_counts.get(status.value, 0))
                 for status in RepoStatus
@@ -113,8 +119,11 @@ class DashboardService:
                     name=language.name,
                     code_lines=language.code_lines,
                     percent=(
-                        round(language.code_lines / language_code_total * 100, 2)
-                        if language_code_total
+                        round(
+                            (language.bytes or language.code_lines) / language_weight * 100,
+                            2,
+                        )
+                        if language_weight
                         else 0.0
                     ),
                     repos=language.repos,

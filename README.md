@@ -36,7 +36,8 @@ make run       # uvicorn，监听 .env 中的 IGD_HOST:IGD_PORT
 
 - **自动发现**：独立爬虫进程抓取 GitHub Trending，通过 `POST /api/repos` 加入同步列表；也支持页面手动添加。
 - **镜像同步**：按 `平台/owner/repo` 落盘为 bare 镜像；定时 fetch、更新默认分支、刷新工作区。同仓库互斥，失败按指数退避重试。
-- **代码统计**：`scc --format json --percent` 统计代码/注释/空行/文件数/语言占比，并记录镜像与工作区磁盘占用。
+- **代码统计**：`scc --format json --percent` 统计代码/注释/空行/文件数，并记录镜像与工作区磁盘占用。
+- **语言口径对齐 GitHub**：只有编程语言与标记语言进入语言分布，JSON/YAML/TOML/CSV 等数据文件和 Markdown/纯文本等文档不计入；百分比按字节加权，与 GitHub 的语言条一致。
 - **检索**：SQLite FTS5 索引仓库名、owner、描述和 README 纯文本。
 - **README 预览**：Markdown 渲染、相对链接与图片重写、后端 HTML 清洗、raw 文件按仓库内路径安全读取。
 - **只读 clone**：`git http-backend` 暴露 smart HTTP，`upload-pack` 有并发上限和超时。
@@ -137,7 +138,7 @@ crawler → config / models（仅 HTTP 契约，不依赖业务服务）
 
 ```text
 src/igitdeck/
-  config.py              # .env → Settings（28 项配置）
+  config.py              # .env → Settings（32 项配置）
   urls.py                # clone / raw URL 形状
   paths.py               # 数据目录布局 + 路径越界防护
   clock.py               # SQLite 时间戳转换
@@ -200,7 +201,7 @@ data/
 | 表 | 用途 |
 |---|---|
 | `repos` | 仓库身份、状态、描述、README 索引文本、分支、最后同步/提交、失败次数 |
-| `repo_snapshots` | 每个仓库仅保留当前提交的代码/注释/空行/文件数/磁盘/语言占比 |
+| `repo_snapshots` | 每个仓库仅保留当前提交的代码/注释/空行/文件数/磁盘与各语言字节数 |
 | `repo_trends` | 默认分支 git 洞察：行数历史（最多 120 点）、52 周活跃度、12 月增删、Top 5 贡献者、跳过原因 |
 | `sync_runs` | 最近 50 次同步的开始/结束、触发方式、成功失败、commit、消息 |
 
@@ -228,7 +229,8 @@ data/
 | `IGD_SYNC_CONCURRENCY` | `4` | 同时同步的仓库数上限 |
 | `IGD_SYNC_INTERVAL_MINUTES` | `60` | 就绪仓库刷新周期 |
 | `IGD_SYNC_RETRY_BASE_MINUTES` / `_MAX_MINUTES` | `5` / `120` | 失败重试指数退避与上限 |
-| `IGD_GIT_TIMEOUT_SECONDS` | `1800` | clone/fetch/worktree 超时 |
+| `IGD_GIT_TIMEOUT_SECONDS` | `3600` | 单条 git 命令硬上限 |
+| `IGD_GIT_IDLE_TIMEOUT_SECONDS` | `300` | 流式 clone/fetch 无进展多久后中止；只要持续有传输进度，大仓库可以一直跑到完成 |
 | `IGD_GIT_HTTP_CONCURRENCY` | `4` | upload-pack 并发上限 |
 | `IGD_GIT_HTTP_TIMEOUT_SECONDS` | `1800` | upload-pack 超时 |
 | `IGD_GIT_HTTP_MAX_REQUEST_BYTES` | `8388608` | upload-pack 请求体（含解压后）上限，超出返回 413 |
@@ -326,9 +328,9 @@ make hooks       # 安装可选 commit-msg hook
 - GitLab 子组仓库（路径超过 `group/repo` 两段）暂不支持。
 - README 仅支持 Markdown 渲染；`.rst` / `.txt` 以纯文本显示。外部图片依赖出网访问。
 - scc 解析按 v4 JSON 输出编写；如需其他版本，请设置 `IGD_SCC_BINARY` 并确认输出字段。
-- 行数趋势统计的是 git 跟踪的文本行（含文档、配置），不等于 scc 代码行；提交数超过 `IGD_GIT_INSIGHTS_MAX_COMMITS`（默认 10 万）时只扫描最近 N 个提交，趋势页会标注截断，并用 HEAD 行数锚定绝对数值。
+- 行数趋势统计的是 git 跟踪的文本行（含文档、配置），与 scc 代码行口径不同；提交数超过 `IGD_GIT_INSIGHTS_MAX_COMMITS`（默认 10 万）时只扫描最近 N 个提交，趋势页会标注截断，并用 HEAD 行数锚定绝对数值。
 - 提交活跃度统计全部提交（含 merge）；行数趋势与增删按非 merge 提交的 diff 计算，末点以镜像 HEAD 补齐。
-- 超大仓库（GB 级）首次同步可达数十分钟，期间列表页处于“同步中”，属预期。首次同步先抓默认分支，再补全其余引用：中断后再次同步会复用已完成的引用，不会从头重来；但 git 无法恢复只下载了一半的 pack 文件。超过最长同步时间会被判定失败并按退避重试。
+- 超大仓库（GB 级）首次同步可达数小时，期间列表页处于“同步中”，属预期。首次同步先抓默认分支，再补全其余引用：中断后再次同步会复用已完成的引用，不会从头重来；但 git 无法恢复只下载了一半的 pack 文件。传输期间只要持续有进度就不会被超时打断，只有长时间无进展或超过硬上限才会终止。
 - 同步失败在界面只显示归类后的中文原因（网络、超时、权限、空间等），完整 git 输出写入日志文件，便于排查但不暴露本机路径。
 - 可选功能（提交热力图、Top contributors、文件树、语法高亮、License 检测、RSS 等）未实现。
 

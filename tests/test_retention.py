@@ -75,8 +75,11 @@ def test_stats_only_surface_for_the_mirrored_commit(container: Container) -> Non
         readme_text=None,
         description=None,
     )
-    assert container.catalog.get_summary(record.id).stats is not None
-    assert container.dashboard.overview().total_code_lines == 1
+    summary = container.catalog.get_summary(record.id)
+    assert summary.stats is not None
+    # The fake snapshot has no chartable language, so totals derive to zero.
+    assert summary.stats.code_lines == 0
+    assert container.dashboard.overview().total_code_lines == 0
 
     container.stats.add_snapshot(record.id, stats("b"))
     assert container.catalog.get_summary(record.id).stats is None
