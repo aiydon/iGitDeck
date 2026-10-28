@@ -1,7 +1,7 @@
 import type { EChartsOption } from "echarts";
 
 import type { LanguageSlice, MonthChurn, TrendPoint } from "../api/client";
-import { compactNumber, formatChartDate, formatNumber } from "./format";
+import { compactNumber, formatNumber } from "./format";
 import { languageColor } from "./languageColor";
 
 export interface LanguageDatum {
@@ -15,6 +15,32 @@ export interface LanguageDatum {
 
 const OTHER_COLOR = "#98a096";
 const MAX_SEGMENTS = 7;
+/** Multi-year histories get year-qualified ticks; short ones stay day-precise. */
+const YEAR_SPAN_DAYS = 300;
+const MAX_TREND_TICKS = 8;
+
+function trendSpanDays(points: TrendPoint[]): number {
+  let first = Number.POSITIVE_INFINITY;
+  let last = Number.NEGATIVE_INFINITY;
+  for (const point of points) {
+    const time = new Date(point.committed_at).getTime();
+    if (Number.isNaN(time)) continue;
+    if (time < first) first = time;
+    if (time > last) last = time;
+  }
+  return last >= first ? (last - first) / 86_400_000 : 0;
+}
+
+function trendLabels(points: TrendPoint[]): string[] {
+  const withYear = trendSpanDays(points) > YEAR_SPAN_DAYS;
+  return points.map((point) => {
+    const date = new Date(point.committed_at);
+    if (Number.isNaN(date.getTime())) return point.committed_at;
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    if (withYear) return `${date.getFullYear()}-${month}`;
+    return `${month}-${String(date.getDate()).padStart(2, "0")}`;
+  });
+}
 
 const TOOLTIP_STYLE = {
   backgroundColor: "#18201a",
@@ -86,10 +112,19 @@ export function trendChartOption(points: TrendPoint[]): EChartsOption {
     xAxis: {
       type: "category",
       boundaryGap: false,
-      data: points.map((point) => formatChartDate(point.committed_at)),
+      data: trendLabels(points),
       axisLine: { lineStyle: { color: "rgba(128,136,124,0.24)" } },
       axisTick: { show: false },
-      axisLabel: { color: "#8b9288", fontSize: 11, hideOverlap: true },
+      axisLabel: {
+        color: "#8b9288",
+        fontSize: 11,
+        hideOverlap: true,
+        // Skip ticks so long histories never crowd more than a handful of labels.
+        interval:
+          points.length > MAX_TREND_TICKS
+            ? Math.ceil(points.length / MAX_TREND_TICKS) - 1
+            : 0,
+      },
     },
     yAxis: {
       type: "value",

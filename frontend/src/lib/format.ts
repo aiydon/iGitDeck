@@ -7,12 +7,6 @@ const DATE_TIME = new Intl.DateTimeFormat("zh-CN", {
   dateStyle: "medium",
   timeStyle: "short",
 });
-const CHART_DATE = new Intl.DateTimeFormat("zh-CN", {
-  month: "2-digit",
-  day: "2-digit",
-  hour: "2-digit",
-  minute: "2-digit",
-});
 const RELATIVE = new Intl.RelativeTimeFormat("zh-CN", { numeric: "auto" });
 
 export function formatNumber(value: number): string {
@@ -44,11 +38,6 @@ export function formatDateTime(value: string | null | undefined): string {
   if (!value) return "—";
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? "—" : DATE_TIME.format(date);
-}
-
-export function formatChartDate(value: string): string {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : CHART_DATE.format(date);
 }
 
 export function relativeTime(

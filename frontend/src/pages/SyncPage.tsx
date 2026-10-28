@@ -6,14 +6,14 @@ import type { SyncListParams, SyncRunStatus, SyncRunView } from "../api/client";
 import { EmptyState } from "../components/EmptyState";
 import { RefreshIcon, SearchIcon } from "../components/icons";
 import { Notice } from "../components/Notice";
-import type { NoticeTone } from "../components/Notice";
 import { Pagination } from "../components/Pagination";
 import { SyncRunsTable } from "../components/repo/SyncRunsTable";
-import { errorMessage, relativeTime } from "../lib/format";
+import { relativeTime } from "../lib/format";
 import { readPageParam, withQueryParam } from "../lib/repoQuery";
 import { notifyStatusChanged } from "../lib/status";
 import { useLiveRefresh, useNow, useRequest } from "../lib/hooks";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
+import { useNotice } from "../lib/useNotice";
 import { syncPhaseLabel } from "../lib/options";
 
 const PAGE_SIZE = 20;
@@ -23,11 +23,6 @@ const FILTERS: { value: SyncRunStatus | ""; label: string }[] = [
   { value: "success", label: "成功" },
   { value: "failed", label: "失败" },
 ];
-
-interface NoticeState {
-  tone: NoticeTone;
-  message: string;
-}
 
 function readStatus(value: string | null): SyncRunStatus | undefined {
   return value === "running" || value === "success" || value === "failed"
@@ -39,7 +34,7 @@ export function SyncPage() {
   const [params, setParams] = useSearchParams();
   const status = readStatus(params.get("status"));
   const page = readPageParam(params.get("page"));
-  const [notice, setNotice] = useState<NoticeState | null>(null);
+  const { notice, show, fail, dismiss } = useNotice();
   const [retrying, setRetrying] = useState<number | null>(null);
   const [retryingAll, setRetryingAll] = useState(false);
 
@@ -112,19 +107,16 @@ export function SyncPage() {
     try {
       const result = await api.retryFailed();
       if (result.queued === 0) {
-        setNotice({ tone: "info", message: "没有需要重试的失败仓库" });
+        show("没有需要重试的失败仓库");
       } else {
-        setNotice({
-          tone: "info",
-          message: `已加入重试队列：${result.queued} 个仓库`,
-        });
+        show(`已加入重试队列：${result.queued} 个仓库`);
         refreshProgress();
         refresh();
         refreshSystem();
         notifyStatusChanged();
       }
     } catch (cause) {
-      setNotice({ tone: "error", message: errorMessage(cause) });
+      fail(cause);
     } finally {
       setRetryingAll(false);
     }
@@ -134,15 +126,18 @@ export function SyncPage() {
     setRetrying(run.repo_id);
     try {
       const result = await api.syncRepo(run.repo_id);
-      setNotice({
-        tone: result.queued ? "success" : "info",
-        message: result.queued
+      show(
+        result.queued
           ? `已重新同步：${run.full_name}`
           : result.message ?? "该仓库正在同步",
-      });
+        result.queued ? "success" : "info",
+      );
       refresh();
+      refreshProgress();
+      refreshSystem();
+      notifyStatusChanged();
     } catch (cause) {
-      setNotice({ tone: "error", message: errorMessage(cause) });
+      fail(cause);
     } finally {
       setRetrying(null);
     }
@@ -186,7 +181,7 @@ export function SyncPage() {
       </header>
 
       {notice && (
-        <Notice message={notice.message} tone={notice.tone} onClose={() => setNotice(null)} />
+        <Notice message={notice.message} tone={notice.tone} onClose={dismiss} />
       )}
 
       {activeCount > 0 && (
@@ -262,6 +257,7 @@ export function SyncPage() {
               page={data.page}
               pages={data.pages}
               total={data.total}
+              unit="条记录"
               onChange={changePage}
             />
           </>

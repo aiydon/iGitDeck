@@ -6,26 +6,20 @@ import type { RepoBatchResult, RepoSummary } from "../api/client";
 import { AddRepoDialog } from "../components/AddRepoDialog";
 import { PlusIcon } from "../components/icons";
 import { Notice } from "../components/Notice";
-import type { NoticeTone } from "../components/Notice";
 import { Pagination } from "../components/Pagination";
 import { RepoFilters } from "../components/repo/RepoFilters";
 import { RepoTable } from "../components/repo/RepoTable";
-import { errorMessage } from "../lib/format";
 import { useLiveRefresh, useRequest } from "../lib/hooks";
 import { readRepoQuery, toListParams, withQueryParam } from "../lib/repoQuery";
 import { notifyStatusChanged } from "../lib/status";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
-
-interface NoticeState {
-  tone: NoticeTone;
-  message: string;
-}
+import { useNotice } from "../lib/useNotice";
 
 export function ReposPage() {
   const [params, setParams] = useSearchParams();
   const state = readRepoQuery(params);
   const [addOpen, setAddOpen] = useState(false);
-  const [notice, setNotice] = useState<NoticeState | null>(null);
+  const { notice, show, fail, dismiss } = useNotice();
   const [retryingId, setRetryingId] = useState<number | null>(null);
 
   useDocumentTitle("仓库 · iGitDeck");
@@ -92,10 +86,10 @@ export function ReposPage() {
       result.existing ? `已存在 ${result.existing}` : "",
       result.failed ? `失败 ${result.failed}` : "",
     ].filter(Boolean);
-    setNotice({
-      tone: result.failed === 0 ? "success" : result.created > 0 ? "info" : "error",
-      message: parts.join("，") || "没有需要添加的仓库",
-    });
+    show(
+      parts.join("，") || "没有需要添加的仓库",
+      result.failed === 0 ? "success" : result.created > 0 ? "info" : "error",
+    );
     refreshAll();
     notifyStatusChanged();
     window.setTimeout(refreshAll, 1500);
@@ -105,17 +99,17 @@ export function ReposPage() {
     setRetryingId(repo.id);
     try {
       const result = await api.syncRepo(repo.id);
-      setNotice({
-        tone: result.queued ? "success" : "info",
-        message: result.queued
+      show(
+        result.queued
           ? `已重新同步：${repo.full_name}`
           : result.message ?? "该仓库正在同步",
-      });
+        result.queued ? "success" : "info",
+      );
       refreshAll();
       notifyStatusChanged();
       window.setTimeout(refreshAll, 1500);
     } catch (cause) {
-      setNotice({ tone: "error", message: errorMessage(cause) });
+      fail(cause);
     } finally {
       setRetryingId(null);
     }
@@ -129,7 +123,7 @@ export function ReposPage() {
   return (
     <>
       {notice && (
-        <Notice message={notice.message} tone={notice.tone} onClose={() => setNotice(null)} />
+        <Notice message={notice.message} tone={notice.tone} onClose={dismiss} />
       )}
 
       <section className="panel list-panel" aria-busy={loading}>

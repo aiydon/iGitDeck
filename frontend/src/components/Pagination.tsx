@@ -4,6 +4,7 @@ interface PaginationProps {
   page: number;
   pages: number;
   total: number;
+  unit?: string;
   onChange: (page: number) => void;
 }
 
@@ -36,14 +37,20 @@ function pageItems(current: number, total: number): PageItem[] {
   return result;
 }
 
-export function Pagination({ page, pages, total, onChange }: PaginationProps) {
+export function Pagination({
+  page,
+  pages,
+  total,
+  unit = "个仓库",
+  onChange,
+}: PaginationProps) {
   if (pages <= 0) return null;
   const items = pageItems(page, pages);
 
   return (
     <nav className="pagination" aria-label="分页">
       <span className="pagination-summary">
-        共 {total} 个仓库 · 第 {page} / {pages} 页
+        共 {total} {unit} · 第 {page} / {pages} 页
       </span>
       <div className="pagination-controls">
         <button
