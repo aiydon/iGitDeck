@@ -7,7 +7,6 @@ import shutil
 import time
 from datetime import datetime
 from pathlib import Path
-from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict
 
@@ -23,11 +22,10 @@ from igitdeck.services.metadata import MetadataClient
 from igitdeck.services.progress import ProgressTracker
 from igitdeck.services.readme import ReadmeService, ReadmeSource
 from igitdeck.services.stats_collector import StatsCollector, StatsSummary
+from igitdeck.services.sync_errors import describe_sync_error
 from igitdeck.services.trends import TrendService
 
 logger = logging.getLogger(__name__)
-
-_MAX_ERROR_LENGTH = 2000
 
 # Maps git's own progress phases onto the overall 0-100 sync bar.
 # (start, end, label) on the overall 0-100 bar.
@@ -155,21 +153,36 @@ class SyncService:
         worktree = self.paths.worktree(repo.platform, repo.owner, repo.name)
         bare.parent.mkdir(parents=True, exist_ok=True)
         worktree.parent.mkdir(parents=True, exist_ok=True)
+        # Legacy one-shot clones left staging directories behind when killed.
+        for stale in bare.parent.glob(f"{bare.name}.tmp-*"):
+            shutil.rmtree(stale, ignore_errors=True)
 
-        if bare.is_dir():
+        # A mirror with an origin is resumed: fetch keeps already downloaded
+        # objects, so an interrupted multi-GB clone continues where it stopped.
+        first_attempt = not self.git.has_origin(bare)
+        if first_attempt:
+            shutil.rmtree(bare, ignore_errors=True)
+            phase = SyncPhase.CLONING
+            self.progress.update(repo.id, phase=phase, percent=1, detail="初始化镜像")
+            self.git.init_mirror(repo.url, bare)
+        else:
             phase = SyncPhase.FETCHING
             self.progress.update(repo.id, phase=phase, percent=1, detail="抓取更新")
-            self.git.fetch(
-                bare,
-                on_progress=lambda raw, percent: self._report_git(repo.id, phase, raw, percent),
-            )
-        else:
-            phase = SyncPhase.CLONING
-            self.progress.update(repo.id, phase=phase, percent=1, detail="克隆镜像")
-            self._clone_mirror(repo, bare)
+
+        callback = lambda raw, percent: self._report_git(  # noqa: E731
+            repo.id, phase, raw, percent
+        )
+        branch = self._resolve_default_branch(repo, bare)
+
+        # Pull the default branch first: if the full mirror fetch is interrupted,
+        # this ref is kept and the retry negotiates from it instead of starting over.
+        if first_attempt and not self.git.has_ref(bare, f"refs/heads/{branch}"):
+            self.progress.update(repo.id, phase=phase, percent=1, detail="抓取默认分支")
+            self.git.fetch_ref(bare, branch, on_progress=callback)
+
+        self.git.fetch(bare, on_progress=callback)
         self.progress.update(repo.id, phase=phase, percent=92)
 
-        branch = self._resolve_default_branch(repo, bare)
         self.git.set_default_branch(bare, branch)
         return _Mirror(
             bare=bare,
@@ -236,7 +249,7 @@ class SyncService:
         commit_sha: str | None,
         exc: BaseException,
     ) -> None:
-        message = _brief(exc)
+        message = describe_sync_error(exc)
         logger.exception("sync failed for %s/%s", repo.owner, repo.name)
         try:
             self.repos.mark_failure(repo.id, message)
@@ -253,24 +266,6 @@ class SyncService:
     def _report_git(self, repo_id: int, phase: SyncPhase, git_phase: str, percent: int) -> None:
         scaled, label = scale_git_progress(git_phase, percent)
         self.progress.update(repo_id, phase=phase, percent=scaled, detail=label)
-
-    def _clone_mirror(self, repo: RepoRecord, bare: Path) -> None:
-        # A killed process cannot run its cleanup; drop any orphaned staging dirs.
-        for stale in bare.parent.glob(f"{bare.name}.tmp-*"):
-            shutil.rmtree(stale, ignore_errors=True)
-        temp = bare.with_name(f"{bare.name}.tmp-{uuid4().hex}")
-        try:
-            self.git.clone_mirror(
-                repo.url,
-                temp,
-                on_progress=lambda raw, percent: self._report_git(
-                    repo.id, SyncPhase.CLONING, raw, percent
-                ),
-            )
-            temp.rename(bare)
-        finally:
-            if temp.exists():
-                shutil.rmtree(temp, ignore_errors=True)
 
     def _resolve_default_branch(self, repo: RepoRecord, bare: Path) -> str:
         branch: str | None = None
@@ -298,8 +293,3 @@ class SyncService:
 
         self.git.prune_worktrees(mirror.bare)
         self.git.add_worktree(mirror.bare, worktree, mirror.commit_sha)
-
-
-def _brief(exc: BaseException) -> str:
-    text = str(exc).strip() or type(exc).__name__
-    return text[-_MAX_ERROR_LENGTH:]

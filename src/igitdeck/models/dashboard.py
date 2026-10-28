@@ -62,7 +62,7 @@ class SystemStatus(BaseModel):
     auto_sync: bool
     sync_interval_minutes: int
     next_sync_at: datetime | None = None
-    last_sync_at: datetime | None = None
+    next_sync_last_attempt_at: datetime | None = None
     due_now: int = 0
     total_code_lines: int = 0
     total_disk_bytes: int = 0

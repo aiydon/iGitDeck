@@ -7,10 +7,10 @@ mirror must stay an operator action on the host, not a web endpoint.
 from __future__ import annotations
 
 import argparse
-import logging
 import sys
 
 from igitdeck.config import load_settings
+from igitdeck.logging_setup import configure_logging
 from igitdeck.models.repo import RepoStatus
 from igitdeck.services.container import build_container
 
@@ -28,12 +28,15 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     args = parser.parse_args(argv)
-    logging.basicConfig(
-        level=logging.getLevelNamesMapping().get(load_settings().log_level.upper(), logging.INFO),
-        format="%(levelname)s %(name)s: %(message)s",
+    settings = load_settings()
+    configure_logging(
+        settings.log_level,
+        log_path=settings.logs_dir / "maintenance.log",
+        max_bytes=settings.log_max_bytes,
+        backup_count=settings.log_backups,
     )
 
-    container = build_container(load_settings())
+    container = build_container(settings)
     container.paths.ensure()
     container.db.migrate()
 

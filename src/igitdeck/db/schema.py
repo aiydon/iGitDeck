@@ -5,7 +5,7 @@ Bump SCHEMA_VERSION and append the migration statements when the schema changes.
 
 from __future__ import annotations
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 # Each entry upgrades the database from the previous version to its key.
 MIGRATIONS: dict[int, tuple[str, ...]] = {
@@ -176,6 +176,21 @@ MIGRATIONS: dict[int, tuple[str, ...]] = {
         """
         DELETE FROM repo_trends
         WHERE points = '[]' AND coalesce(activity, '[]') = '[]'
+        """,
+    ),
+    5: (
+        # Older builds stored raw git output (including local paths) in errors.
+        """
+        UPDATE repos
+        SET error_message = '同步失败，请查看日志'
+        WHERE error_message IS NOT NULL AND error_message GLOB '*[A-Za-z]*'
+        """,
+        """
+        UPDATE sync_runs
+        SET message = '同步失败，请查看日志'
+        WHERE status = 'failed'
+          AND message IS NOT NULL
+          AND message GLOB '*[A-Za-z]*'
         """,
     ),
 }

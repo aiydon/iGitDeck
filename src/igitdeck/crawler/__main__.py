@@ -12,6 +12,7 @@ from urllib.request import Request, urlopen
 from igitdeck.config import Settings, load_settings
 from igitdeck.crawler.client import submit_repo
 from igitdeck.crawler.parser import parse_trending
+from igitdeck.logging_setup import configure_logging
 from igitdeck.models.repo import RepoCreateRequest, RepoSource
 
 logger = logging.getLogger(__name__)
@@ -88,9 +89,11 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     settings = load_settings()
-    logging.basicConfig(
-        level=logging.getLevelNamesMapping().get(settings.log_level.upper(), logging.INFO),
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    configure_logging(
+        settings.log_level,
+        log_path=settings.logs_dir / "crawler.log",
+        max_bytes=settings.log_max_bytes,
+        backup_count=settings.log_backups,
     )
 
     if args.once or args.dry_run:

@@ -1,4 +1,4 @@
-"""Periodic due-repository scheduler with a tqdm batch bar."""
+"""Periodic due-repository scheduler. Web clients show live progress."""
 
 from __future__ import annotations
 
@@ -6,8 +6,6 @@ import asyncio
 import logging
 from datetime import timedelta
 from typing import Protocol
-
-from tqdm import tqdm
 
 from igitdeck.clock import utcnow
 from igitdeck.models.sync import SyncTrigger
@@ -71,11 +69,8 @@ class SyncScheduler:
         if not tasks:
             return
 
-        logger.debug("scheduler submitted %s sync tasks", len(tasks))
-        with tqdm(total=len(tasks), desc="sync", unit="repo", disable=None) as bar:
-            for completed in asyncio.as_completed(tasks):
-                await completed
-                bar.update(1)
+        logger.info("scheduler queued %s repositories", len(tasks))
+        await asyncio.gather(*tasks)
 
     async def _fail_stale_syncs(self) -> None:
         now = utcnow()

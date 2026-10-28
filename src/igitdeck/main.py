@@ -19,6 +19,7 @@ from igitdeck.api.errors import install_error_handlers
 from igitdeck.api.routes import dashboard, git, repos, syncs
 from igitdeck.clock import utcnow
 from igitdeck.config import Settings, load_settings
+from igitdeck.logging_setup import configure_logging
 from igitdeck.services.container import build_container
 
 if TYPE_CHECKING:
@@ -30,18 +31,15 @@ logger = logging.getLogger(__name__)
 INSIGHTS_WARMUP_CONCURRENCY = 3
 
 
-def configure_logging(level: str) -> None:
-    numeric = logging.getLevelNamesMapping().get(level.upper(), logging.INFO)
-    logging.basicConfig(
-        level=numeric,
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-    )
-
-
 def create_app(settings: Settings | None = None, *, with_logging: bool = True) -> FastAPI:
     resolved_settings = settings or load_settings()
     if with_logging:
-        configure_logging(resolved_settings.log_level)
+        configure_logging(
+            resolved_settings.log_level,
+            log_path=resolved_settings.logs_dir / "igideck.log",
+            max_bytes=resolved_settings.log_max_bytes,
+            backup_count=resolved_settings.log_backups,
+        )
     container = build_container(resolved_settings)
 
     @asynccontextmanager
@@ -173,4 +171,6 @@ def run() -> None:
         host=settings.host,
         port=settings.port,
         log_level=settings.log_level.lower(),
+        # Keep uvicorn's loggers on the root handlers so access logs reach the file.
+        log_config=None,
     )

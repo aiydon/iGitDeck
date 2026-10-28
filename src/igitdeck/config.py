@@ -47,6 +47,8 @@ class Settings(BaseModel):
     git_http_max_request_bytes: int = Field(8 * 1024 * 1024, ge=1024)
     scc_binary: str = "scc"
     scc_timeout_seconds: int = Field(600, ge=10)
+    log_max_bytes: int = Field(10 * 1024 * 1024, ge=1024)
+    log_backups: int = Field(5, ge=1)
 
     # Metadata and README
     fetch_metadata: bool = True
@@ -69,6 +71,10 @@ class Settings(BaseModel):
         if self.sync_retry_max_minutes < self.sync_retry_base_minutes:
             raise ValueError("IGD_SYNC_RETRY_MAX_MINUTES must be >= IGD_SYNC_RETRY_BASE_MINUTES")
         return self
+
+    @property
+    def logs_dir(self) -> Path:
+        return self.data_dir / "logs"
 
     @property
     def sync_stale_after_seconds(self) -> int:

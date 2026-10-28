@@ -171,6 +171,47 @@ class GitClient:
         else:
             self._run(args)
 
+    def init_mirror(self, url: str, bare: Path) -> None:
+        """Create an empty bare repository that mirrors all refs of `url`."""
+        self._run(["init", "--bare", "--quiet", str(bare)])
+        self._run(["--git-dir", str(bare), "remote", "add", "--mirror=fetch", "origin", url])
+
+    def has_origin(self, bare: Path) -> bool:
+        if not (bare / "config").is_file():
+            return False
+        try:
+            self._run(["--git-dir", str(bare), "remote", "get-url", "origin"])
+        except GitCommandError:
+            return False
+        return True
+
+    def has_ref(self, bare: Path, ref: str) -> bool:
+        try:
+            self._run(["--git-dir", str(bare), "rev-parse", "--verify", "--quiet", ref])
+        except GitCommandError:
+            return False
+        return True
+
+    def fetch_ref(
+        self,
+        bare: Path,
+        branch: str,
+        on_progress: ProgressCallback | None = None,
+    ) -> None:
+        """Fetch one branch first so later retries can reuse its objects."""
+        args = [
+            "--git-dir",
+            str(bare),
+            "fetch",
+            "origin",
+            f"+refs/heads/{branch}:refs/heads/{branch}",
+        ]
+        if on_progress:
+            args.insert(3, "--progress")
+            self._stream(args, on_progress)
+        else:
+            self._run(args)
+
     def fetch(self, bare: Path, on_progress: ProgressCallback | None = None) -> None:
         args = ["--git-dir", str(bare), "fetch", "--prune"]
         args.append("--progress" if on_progress else "--quiet")

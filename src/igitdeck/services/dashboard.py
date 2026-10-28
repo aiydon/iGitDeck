@@ -48,14 +48,12 @@ class DashboardService:
         candidates = self.repos.sync_candidates()
         due = sum(1 for repo in candidates if self.policy.is_due(repo, now))
         upcoming = [
-            moment
+            (moment, repo)
             for repo in candidates
             if (moment := self.policy.next_due_at(repo, now)) is not None
         ]
+        next_pair = min(upcoming, key=lambda item: item[0]) if upcoming else None
         totals = self.stats.totals()
-        last_attempts = [
-            repo.last_attempt_at for repo in candidates if repo.last_attempt_at is not None
-        ]
 
         recent = self.repos.recently_active(8)
 
@@ -67,8 +65,10 @@ class DashboardService:
             pending=counts.get(RepoStatus.PENDING.value, 0),
             auto_sync=self.auto_sync,
             sync_interval_minutes=self.policy.interval_seconds // 60,
-            next_sync_at=min(upcoming) if self.auto_sync and upcoming else None,
-            last_sync_at=max(last_attempts) if last_attempts else None,
+            next_sync_at=next_pair[0] if self.auto_sync and next_pair else None,
+            next_sync_last_attempt_at=(
+                next_pair[1].last_attempt_at if self.auto_sync and next_pair else None
+            ),
             due_now=due,
             total_code_lines=totals.code_lines,
             total_disk_bytes=totals.disk_bytes,

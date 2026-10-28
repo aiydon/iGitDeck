@@ -199,3 +199,52 @@ def test_fake_language_override(container: Container) -> None:
     summary = collector.collect(container.paths.root, disk_roots=[])
     assert summary.code_lines == 7
     assert summary.languages[0].name == "Rust"
+
+
+def test_interrupted_first_fetch_resumes_instead_of_recloning(
+    container: Container, fake_collector, make_git_repo
+) -> None:
+    import subprocess
+
+    container.sync.collector = fake_collector
+    source = container.paths.root / "late-source"
+    identity = RepoIdentity(
+        platform=Platform.GITHUB,
+        owner="local",
+        name="resumable",
+        url=source.as_uri(),
+    )
+    record = container.repos.add(
+        identity,
+        source=RepoSource.MANUAL,
+        description=None,
+        added_at=datetime.now(UTC),
+    )
+
+    container.sync.sync(record.id, SyncTrigger.MANUAL)
+
+    failed = container.repos.get(record.id)
+    assert failed is not None
+    assert failed.status is RepoStatus.ERROR
+    assert "/" not in (failed.error_message or "")
+
+    bare = container.paths.bare_repo(Platform.GITHUB, "local", "resumable")
+    assert (bare / "config").is_file()
+
+    source.mkdir()
+    for args in (
+        ["init", "-q", "-b", "main"],
+        ["config", "user.email", "t@example.com"],
+        ["config", "user.name", "T"],
+    ):
+        subprocess.run(["git", *args], cwd=source, check=True, capture_output=True)
+    (source / "README.md").write_text("# later\n", encoding="utf-8")
+    subprocess.run(["git", "add", "."], cwd=source, check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-qm", "init"], cwd=source, check=True, capture_output=True)
+
+    container.sync.sync(record.id, SyncTrigger.MANUAL)
+
+    ready = container.repos.get(record.id)
+    assert ready is not None
+    assert ready.status is RepoStatus.READY
+    assert (bare / "refs").is_dir()

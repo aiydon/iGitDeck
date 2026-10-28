@@ -114,3 +114,47 @@ def test_migrate_v3_drops_skipped_trends_and_adds_note(tmp_path: Path) -> None:
         assert {row[1] for row in connection.execute("PRAGMA table_info(repo_trends)")} >= {"note"}
     finally:
         connection.close()
+
+
+def test_migrate_v5_sanitizes_legacy_error_messages(tmp_path: Path) -> None:
+    path = tmp_path / "legacy-errors.db"
+    connection = sqlite3.connect(path)
+    for target in (1, 2, 3, 4):
+        for statement in MIGRATIONS[target]:
+            connection.execute(statement)
+    connection.execute(
+        """
+        INSERT INTO repos (platform, owner, name, url, source, status, added_at, error_message)
+        VALUES ('github', 'a', 'b', 'u', 'manual', 'error', 1,
+                'git clone 失败: Cloning into bare repository ''/home/iy/repo''...')
+        """
+    )
+    connection.execute(
+        """
+        INSERT INTO sync_runs (repo_id, trigger, status, started_at, message)
+        VALUES (1, 'manual', 'failed', 1, 'fatal: unable to access /home/iy/repo')
+        """
+    )
+    connection.execute(
+        """
+        INSERT INTO sync_runs (repo_id, trigger, status, started_at, message)
+        VALUES (1, 'manual', 'success', 1, 'main @ abcdef1234')
+        """
+    )
+    connection.execute("PRAGMA user_version = 4")
+    connection.commit()
+    connection.close()
+
+    Database(path).migrate()
+
+    connection = sqlite3.connect(path)
+    try:
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
+        assert connection.execute("SELECT error_message FROM repos").fetchone()[0] == (
+            "同步失败，请查看日志"
+        )
+        messages = {row[0] for row in connection.execute("SELECT message FROM sync_runs")}
+        assert "fatal: unable to access /home/iy/repo" not in messages
+        assert "main @ abcdef1234" in messages
+    finally:
+        connection.close()

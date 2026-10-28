@@ -2,9 +2,6 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime, timedelta
-from typing import ClassVar
-
-import pytest
 
 import igitdeck.services.scheduler as scheduler_module
 from igitdeck.models.repo import Platform, RepoIdentity, RepoSource, RepoStatus
@@ -12,24 +9,6 @@ from igitdeck.models.sync import SyncTrigger
 from igitdeck.services.container import Container
 from igitdeck.services.policy import SyncPolicy
 from igitdeck.services.scheduler import SyncScheduler
-
-
-class DummyBar:
-    instances: ClassVar[list[DummyBar]] = []
-
-    def __init__(self, *args, **kwargs) -> None:
-        self.total = kwargs.get("total")
-        self.updated = 0
-        DummyBar.instances.append(self)
-
-    def __enter__(self) -> DummyBar:
-        return self
-
-    def __exit__(self, *args) -> None:
-        return None
-
-    def update(self, amount: int) -> None:
-        self.updated += amount
 
 
 class FakeCoordinator:
@@ -73,9 +52,7 @@ def mark_ready(container: Container, repo_id: int, attempted_at: datetime) -> No
     )
 
 
-def test_scheduler_tick_requests_due_repositories(
-    container: Container, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_scheduler_tick_requests_due_repositories(container: Container) -> None:
     now = datetime.now(UTC)
     pending = make_repo(container, "pending")
     stale = make_repo(container, "stale")
@@ -83,8 +60,6 @@ def test_scheduler_tick_requests_due_repositories(
     mark_ready(container, stale.id, now - timedelta(hours=2))
     mark_ready(container, fresh.id, now)
 
-    monkeypatch.setattr(scheduler_module, "tqdm", DummyBar)
-    DummyBar.instances.clear()
     coordinator = FakeCoordinator()
     scheduler = SyncScheduler(
         coordinator=coordinator,
@@ -105,14 +80,9 @@ def test_scheduler_tick_requests_due_repositories(
     requested = {repo_id for repo_id, _ in coordinator.requested}
     assert requested == {pending.id, stale.id}
     assert all(trigger is SyncTrigger.SCHEDULED for _, trigger in coordinator.requested)
-    assert len(DummyBar.instances) == 1
-    assert DummyBar.instances[0].total == 2
-    assert DummyBar.instances[0].updated == 2
 
 
-def test_scheduler_fails_stale_syncing_rows(
-    container: Container, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_scheduler_fails_stale_syncing_rows(container: Container) -> None:
     now = datetime.now(UTC)
     stuck = make_repo(container, "stuck")
     container.repos.mark_syncing(stuck.id, now - timedelta(hours=2))
@@ -120,8 +90,6 @@ def test_scheduler_fails_stale_syncing_rows(
         stuck.id, trigger=SyncTrigger.SCHEDULED, started_at=now - timedelta(hours=2)
     )
 
-    monkeypatch.setattr(scheduler_module, "tqdm", DummyBar)
-    DummyBar.instances.clear()
     coordinator = FakeCoordinator()
     scheduler = SyncScheduler(
         coordinator=coordinator,
@@ -149,14 +117,11 @@ def test_scheduler_fails_stale_syncing_rows(
     assert runs[0].status.value == "failed"
 
 
-def test_scheduler_keeps_live_sync_running(
-    container: Container, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_scheduler_keeps_live_sync_running(container: Container) -> None:
     now = datetime.now(UTC)
     fresh = make_repo(container, "fresh-sync")
     container.repos.mark_syncing(fresh.id, now - timedelta(minutes=5))
 
-    monkeypatch.setattr(scheduler_module, "tqdm", DummyBar)
     coordinator = FakeCoordinator()
     scheduler = SyncScheduler(
         coordinator=coordinator,
