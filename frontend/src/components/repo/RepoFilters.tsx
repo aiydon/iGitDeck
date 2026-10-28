@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type { FilterOptions } from "../../api/client";
 import { useDebouncedValue } from "../../lib/hooks";
@@ -36,12 +36,17 @@ export function RepoFilters({
 }: RepoFiltersProps) {
   const [search, setSearch] = useState(state.q);
   const debouncedSearch = useDebouncedValue(search, 350);
+  // The last value this input already pushed into the URL. Guards against
+  // re-emitting a stale debounced value after an external reset.
+  const emitted = useRef(state.q);
 
   useEffect(() => {
     setSearch(state.q);
   }, [state.q]);
 
   useEffect(() => {
+    if (debouncedSearch === emitted.current) return;
+    emitted.current = debouncedSearch;
     const trimmed = debouncedSearch.trim();
     if (trimmed !== state.q) onChange("q", trimmed || null);
   }, [debouncedSearch, state.q, onChange]);

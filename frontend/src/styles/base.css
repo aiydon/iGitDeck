@@ -114,10 +114,6 @@ code,
   text-underline-offset: 3px;
 }
 
-.mono-number {
-  font-variant-numeric: tabular-nums;
-}
-
 * {
   scrollbar-width: thin;
   scrollbar-color: var(--border-strong) transparent;

@@ -14,7 +14,7 @@ export function StatCard({ label, value, detail, icon, tone = "default" }: StatC
       <div className="stat-icon">{icon}</div>
       <div className="stat-body">
         <span className="stat-label">{label}</span>
-        <strong className="stat-value">{value}</strong>
+        <strong className={`stat-value${value.length > 12 ? " compact" : ""}`}>{value}</strong>
         {detail && <span className="stat-detail">{detail}</span>}
       </div>
     </article>

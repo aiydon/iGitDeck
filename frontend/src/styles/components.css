@@ -130,20 +130,6 @@
   white-space: nowrap;
 }
 
-/* Page headers ----------------------------------------------------------- */
-.page-head {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 24px;
-  margin-bottom: 24px;
-}
-
-.page-head h1 {
-  font-size: clamp(28px, 3.2vw, 38px);
-  letter-spacing: -0.04em;
-}
-
 .lede {
   max-width: 760px;
   margin-top: 8px;
@@ -343,6 +329,11 @@
   line-height: 1.25;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.stat-value.compact {
+  font-size: 18px;
+  letter-spacing: -0.035em;
 }
 
 .stat-detail {
@@ -1027,12 +1018,6 @@
   display: block;
 }
 
-.cell-sub {
-  margin-top: 2px;
-  color: var(--faint);
-  font-size: 10.5px;
-}
-
 .history-message {
   max-width: 360px;
   overflow: hidden;
@@ -1587,6 +1572,41 @@
 }
 
 @media (max-width: 560px) {
+  .latest-commit {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas:
+      "sha meta"
+      "message message";
+    align-items: baseline;
+    gap: 4px 8px;
+    margin-top: 9px;
+  }
+
+  .latest-commit code {
+    grid-area: sha;
+  }
+
+  .latest-commit .muted {
+    grid-area: meta;
+    overflow: hidden;
+    color: var(--faint);
+    font-size: 10.5px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .latest-commit > span:not(.muted) {
+    display: -webkit-box;
+    grid-area: message;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+    font-size: 11px;
+    white-space: normal;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 1;
+  }
+
   .commit-row {
     grid-template-columns: minmax(0, 1fr) auto;
     cursor: default;
