@@ -104,6 +104,12 @@ class RepoStats(BaseModel):
             language.code for language in self.languages if language.category in {"data", "prose"}
         )
 
+    @computed_field
+    @property
+    def text_lines(self) -> int:
+        """Every tracked language line; detail pages show this total."""
+        return sum(language.code for language in self.languages)
+
 
 class SnapshotRecord(RepoStats):
     id: int

@@ -136,6 +136,7 @@ def test_scc_collector_markdown_only_repo_keeps_doc_lines(tmp_path: Path) -> Non
         languages=summary.languages,
     )
     assert stats.doc_lines == 30
+    assert stats.text_lines == 30
     assert stats.languages[0].name == "Markdown"
     assert stats.languages[0].category == "prose"
     assert stats.languages[0].percent == 100.0
