@@ -46,11 +46,27 @@ class LanguageTotal(BaseModel):
     repos: int
 
 
+class SidebarRepo(BaseModel):
+    id: int
+    full_name: str
+    status: RepoStatus
+    last_attempt_at: datetime | None = None
+
+
 class SystemStatus(BaseModel):
     repo_count: int
+    ready: int
     active: int
     failed: int
     pending: int
+    auto_sync: bool
+    sync_interval_minutes: int
+    next_sync_at: datetime | None = None
+    last_sync_at: datetime | None = None
+    due_now: int = 0
+    total_code_lines: int = 0
+    total_disk_bytes: int = 0
+    recent_activity: list[SidebarRepo] = Field(default_factory=list)
 
 
 class Overview(BaseModel):

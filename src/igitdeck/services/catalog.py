@@ -41,6 +41,7 @@ from igitdeck.repositories.sync_runs import SyncRunRepository
 from igitdeck.search import build_fts_query
 from igitdeck.services.history import CommitService
 from igitdeck.services.metadata import MetadataClient
+from igitdeck.services.policy import SyncPolicy
 from igitdeck.services.progress import ProgressTracker
 from igitdeck.services.readme import ReadmeService
 from igitdeck.services.trends import TrendService
@@ -63,6 +64,8 @@ class CatalogService:
         trends: TrendService,
         progress: ProgressTracker,
         history: CommitService,
+        policy: SyncPolicy,
+        auto_sync: bool,
     ) -> None:
         self.repos = repos
         self.stats = stats
@@ -73,6 +76,8 @@ class CatalogService:
         self.trends = trends
         self.progress = progress
         self.history = history
+        self.policy = policy
+        self.auto_sync = auto_sync
 
     def add(
         self,
@@ -190,6 +195,7 @@ class CatalogService:
             contributors=insights.contributors if insights else [],
             insights_note=insights.note if insights else None,
             recent_commits=self.history.recent(record),
+            next_sync_at=(self.policy.next_due_at(record, utcnow()) if self.auto_sync else None),
             sync_runs=self.runs.for_repo(record.id, SYNC_HISTORY_LIMIT),
         )
 

@@ -339,6 +339,7 @@ class RepoDetail(BaseModel):
     contributors: list[Contributor] = Field(default_factory=list)
     insights_note: str | None = None
     recent_commits: list[CommitSummary] = Field(default_factory=list)
+    next_sync_at: datetime | None = None
     sync_runs: list[SyncRunView]
 
 

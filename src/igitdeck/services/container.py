@@ -39,6 +39,7 @@ class Container:
         trends: TrendService,
         progress: ProgressTracker,
         history: CommitService,
+        policy: SyncPolicy,
         readme: ReadmeService,
         files: FileService,
         metadata: MetadataClient,
@@ -58,6 +59,7 @@ class Container:
         self.trends = trends
         self.progress = progress
         self.history = history
+        self.policy = policy
         self.readme = readme
         self.files = files
         self.metadata = metadata
@@ -86,6 +88,11 @@ def build_container(settings: Settings) -> Container:
         timeout_seconds=settings.metadata_timeout_seconds,
     )
     git = GitClient(settings.git_timeout_seconds)
+    policy = SyncPolicy(
+        interval_seconds=settings.sync_interval_minutes * 60,
+        retry_base_seconds=settings.sync_retry_base_minutes * 60,
+        retry_max_seconds=settings.sync_retry_max_minutes * 60,
+    )
     trends = TrendService(git, trend_repository, max_commits=settings.git_insights_max_commits)
     progress = ProgressTracker()
     history = CommitService(git, paths)
@@ -103,11 +110,6 @@ def build_container(settings: Settings) -> Container:
         progress=progress,
     )
     coordinator = SyncCoordinator(sync, settings.sync_concurrency, progress)
-    policy = SyncPolicy(
-        interval_seconds=settings.sync_interval_minutes * 60,
-        retry_base_seconds=settings.sync_retry_base_minutes * 60,
-        retry_max_seconds=settings.sync_retry_max_minutes * 60,
-    )
     scheduler = SyncScheduler(
         coordinator=coordinator,
         repos=repos,
@@ -127,6 +129,8 @@ def build_container(settings: Settings) -> Container:
         trends=trends,
         progress=progress,
         history=history,
+        policy=policy,
+        auto_sync=settings.auto_sync,
     )
     dashboard = DashboardService(
         repos=repos,
@@ -134,6 +138,8 @@ def build_container(settings: Settings) -> Container:
         runs=sync_runs,
         catalog=catalog,
         trends=trends,
+        policy=policy,
+        auto_sync=settings.auto_sync,
     )
     git_http = GitHttpService(
         repos=repos,
@@ -152,6 +158,7 @@ def build_container(settings: Settings) -> Container:
         trends=trends,
         progress=progress,
         history=history,
+        policy=policy,
         readme=readme,
         files=files,
         metadata=metadata,

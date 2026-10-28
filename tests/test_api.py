@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
 
 from igitdeck.config import Settings
 from igitdeck.main import create_app
+from igitdeck.models.repo import Platform, RepoIdentity, RepoSource
 from igitdeck.models.sync import SyncPhase, SyncRunStatus, SyncTrigger
 
 
@@ -136,12 +137,15 @@ def test_api_lifecycle(settings: Settings) -> None:
 
         status = client.get("/api/status")
         assert status.status_code == 200
-        assert status.json() == {
-            "repo_count": 2,
-            "active": 0,
-            "failed": 0,
-            "pending": 2,
-        }
+        payload = status.json()
+        assert payload["repo_count"] == 2
+        assert payload["pending"] == 2
+        assert payload["active"] == payload["failed"] == payload["ready"] == 0
+        assert payload["auto_sync"] is False
+        assert payload["sync_interval_minutes"] == 60
+        assert payload["next_sync_at"] is None
+        assert payload["due_now"] == 2
+        assert payload["total_code_lines"] == 0
 
         runs = client.get("/api/syncs")
         assert runs.status_code == 200
@@ -238,3 +242,60 @@ def test_bulk_retry_without_failures(settings: Settings) -> None:
         response = client.post("/api/syncs/retry-failed")
         assert response.status_code == 200
         assert response.json() == {"queued": 0, "repo_ids": []}
+
+
+def test_status_reports_next_sync_and_recent_activity(settings: Settings) -> None:
+    from igitdeck.services.container import build_container
+
+    container = build_container(settings.model_copy(update={"auto_sync": True}))
+    container.paths.ensure()
+    container.db.migrate()
+
+    record = container.repos.add(
+        RepoIdentity(
+            platform=Platform.GITHUB,
+            owner="local",
+            name="scheduled",
+            url="https://github.com/local/scheduled.git",
+        ),
+        source=RepoSource.MANUAL,
+        description=None,
+        added_at=datetime.now(UTC) - timedelta(minutes=10),
+    )
+    attempted_at = datetime.now(UTC) - timedelta(minutes=10)
+    container.repos.mark_syncing(record.id, attempted_at)
+    container.repos.mark_success(
+        record.id,
+        synced_at=attempted_at,
+        default_branch="main",
+        commit_sha="a" * 40,
+        last_commit_at=attempted_at,
+        readme_path=None,
+        readme_text=None,
+        description=None,
+    )
+
+    payload = container.dashboard.status()
+
+    assert payload.auto_sync is True
+    assert payload.ready == 1
+    assert payload.due_now == 0
+    assert payload.next_sync_at is not None
+    remaining = (payload.next_sync_at - datetime.now(UTC)).total_seconds() / 60
+    assert 45 <= remaining <= 51
+    assert payload.recent_activity[0].full_name == "local/scheduled"
+    assert payload.recent_activity[0].status.value == "ready"
+
+
+def test_detail_hides_next_sync_when_scheduling_is_off(
+    settings: Settings,
+) -> None:
+    app = create_app(settings)
+
+    with TestClient(app) as client:
+        created = client.post(
+            "/api/repos", json={"url": "https://github.com/local/no-schedule"}
+        ).json()
+        detail = client.get(f"/api/repos/{created['repo']['id']}").json()
+
+    assert detail["next_sync_at"] is None

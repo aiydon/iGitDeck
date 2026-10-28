@@ -191,6 +191,8 @@ def test_detail_renders_readme_trend_and_stats(seeded, container: Container) -> 
     assert 'href="/api/repos/' in detail.readme.html
     assert "docs/guide.md" in detail.readme.html
     assert detail.trend == []
+    # Fixture disables auto-sync, so no next run is advertised.
+    assert detail.next_sync_at is None
 
     trend_repository = TrendRepository(container.db)
     point = TrendPoint(committed_at=NOW, commit_sha="a" * 40, lines=123)

@@ -236,6 +236,20 @@ class RepoRepository:
             connection.execute("DELETE FROM repos WHERE id = ?", (repo_id,))
         return _repo_record(row)
 
+    def recently_active(self, limit: int) -> list[RepoRecord]:
+        with self.db.connection() as connection:
+            rows = connection.execute(
+                f"""
+                SELECT {_repo_select()}
+                FROM repos r
+                WHERE r.last_attempt_at IS NOT NULL
+                ORDER BY r.last_attempt_at DESC, r.id DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [_repo_record(row) for row in rows]
+
     def names_by_ids(self, repo_ids: list[int]) -> dict[int, str]:
         if not repo_ids:
             return {}

@@ -121,3 +121,27 @@ def test_due_orders_never_attempted_first_and_limits() -> None:
     ]
     due = POLICY.due(candidates, now=NOW, limit=2)
     assert [repo.id for repo in due] == [2, 3]
+
+
+def test_next_due_at_reports_pending_ready_and_error_timelines() -> None:
+    pending = make_repo(status=RepoStatus.PENDING)
+    assert POLICY.next_due_at(pending, NOW) == NOW
+
+    never_attempted = make_repo(last_attempt_at=None)
+    assert POLICY.next_due_at(never_attempted, NOW) == NOW
+
+    running = make_repo(status=RepoStatus.SYNCING, last_attempt_at=NOW)
+    assert POLICY.next_due_at(running, NOW) is None
+
+    ready = make_repo(last_attempt_at=NOW - timedelta(minutes=10))
+    assert POLICY.next_due_at(ready, NOW) == ready.last_attempt_at + timedelta(hours=1)
+
+    failed = make_repo(
+        status=RepoStatus.ERROR,
+        last_attempt_at=NOW - timedelta(minutes=10),
+        failures=3,
+    )
+    assert POLICY.next_due_at(failed, NOW) == failed.last_attempt_at + timedelta(
+        seconds=POLICY.retry_delay(failed)
+    )
+    assert POLICY.retry_delay(failed) == 1200
