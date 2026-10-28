@@ -87,7 +87,7 @@ def test_stats_only_surface_for_the_mirrored_commit(container: Container) -> Non
 
 
 def test_sync_runs_are_capped_per_repository(
-    container: Container, monkeypatch: pytest.MonkeyPatch
+    container: Container, monkeypatch: pytest.MonkeyPatch, repo_runs
 ) -> None:
     monkeypatch.setattr(sync_runs_module, "MAX_RUNS_PER_REPO", 3)
     record = add_repo(container, "runs")
@@ -104,7 +104,7 @@ def test_sync_runs_are_capped_per_repository(
             commit_sha="a",
         )
 
-    runs = container.sync_runs.for_repo(record.id, 10)
+    runs = repo_runs(record.id, 10)
     assert len(runs) == 3
     assert [run.message for run in runs] == ["run 4", "run 3", "run 2"]
 

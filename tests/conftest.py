@@ -93,3 +93,15 @@ def make_git_repo(tmp_path: Path, git: Callable[..., str]) -> Callable[[dict[str
         return source
 
     return make
+
+
+@pytest.fixture
+def repo_runs(container):
+    """Sync runs of one repository, newest first (the feed is global)."""
+    from igitdeck.models.sync import SyncQuery
+
+    def fetch(repo_id: int, limit: int = 50):
+        page, _ = container.sync_runs.page(SyncQuery(page=1, page_size=min(limit, 100)))
+        return [run for run in page if run.repo_id == repo_id]
+
+    return fetch

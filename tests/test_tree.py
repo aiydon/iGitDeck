@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import shutil
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -82,55 +81,11 @@ def test_tree_aggregates_sizes_from_the_mirror(container, make_git_repo, git) ->
     assert readme.size == len(FILES["README.md"])
 
 
-def test_network_lists_first_parent_chains_per_branch(container, make_git_repo, git) -> None:
-    source = make_git_repo(FILES)
-    head = git(source, "rev-parse", "HEAD").strip()
-    bare = _mirror(container, source, "network-demo")
-    record = _add_ready_record(container, "network-demo", commit_sha=head)
-
-    network = container.network.build(record)
-
-    assert network.default_branch == "main"
-    assert network.truncated is False
-    by_name = {branch.name: branch for branch in network.branches}
-    assert set(by_name) == {"main"}
-    main = by_name["main"]
-    assert main.is_default is True
-    assert [commit.message for commit in main.commits] == ["initial"]
-    assert main.commits[0].sha == head
-    assert main.commits[0].author == "Test User"
-
-    git(source, "checkout", "-q", "-b", "feature")
-    (source / "feature.txt").write_text("feature\n", encoding="utf-8")
-    git(source, "add", ".")
-    git(source, "commit", "-qm", "feature work")
-    shutil.rmtree(bare)
-    container.sync.git.clone_mirror(source.as_uri(), bare)
-
-    network = container.network.build(record)
-    by_name = {branch.name: branch for branch in network.branches}
-    assert set(by_name) == {"main", "feature"}
-    assert by_name["main"].is_default is True
-    assert by_name["feature"].is_default is False
-    # The feature branch first-parent chain continues into the shared base commit.
-    assert [commit.message for commit in by_name["feature"].commits] == [
-        "feature work",
-        "initial",
-    ]
-    assert network.truncated is False
-    assert len(network.branches) <= 12
-    assert all(len(branch.commits) <= 30 for branch in network.branches)
-
-
-def test_tree_and_network_are_empty_without_a_mirror(container) -> None:
-    record = _add_ready_record(container, "missing-tree-network", commit_sha="a" * 40)
+def test_tree_is_empty_without_a_mirror(container) -> None:
+    record = _add_ready_record(container, "missing-tree", commit_sha="a" * 40)
 
     tree = container.tree.build(record)
     assert tree.nodes == []
     assert tree.total_size == 0
     assert tree.total_files == 0
     assert tree.truncated is False
-
-    network = container.network.build(record)
-    assert network.branches == []
-    assert network.truncated is False

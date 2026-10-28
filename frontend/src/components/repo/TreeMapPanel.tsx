@@ -168,15 +168,17 @@ function treemapOption(nodes: TreeNode[], weighting: Weighting): EChartsOption {
     series: [
       {
         type: "treemap",
+        name: "全部",
         data: buildData(nodes, weighting),
         left: 0,
         right: 0,
         top: 0,
         bottom: 0,
         roam: false,
-        nodeClick: "zoomToNode",
+        // Two levels are shown at once; clicking does not zoom, so there is no
+        // navigation state to explain (or forget to reset).
+        nodeClick: false,
         leafDepth: 2,
-        // ECharts draws a root breadcrumb chip by default; it looks like a stray cell.
         breadcrumb: { show: false },
         upperLabel: {
           show: true,
@@ -233,8 +235,6 @@ interface TreeMapPanelProps {
 export function TreeMapPanel({ repoId }: TreeMapPanelProps) {
   const { data, loading, error, refresh } = useRequest(() => api.tree(repoId), [repoId]);
   const [weighting, setWeighting] = useState<Weighting>("size");
-  // Remounting the chart is the simplest reliable way to leave a drilled node.
-  const [viewToken, setViewToken] = useState(0);
 
   const option = useMemo(
     () => (data ? treemapOption(data.nodes ?? [], weighting) : null),
@@ -249,7 +249,7 @@ export function TreeMapPanel({ repoId }: TreeMapPanelProps) {
         <div>
           <h2>目录体积</h2>
           <p>
-            {weighting === "size" ? "按字节统计" : "按文件数统计"} · 点击方块下钻
+            {weighting === "size" ? "按字节统计" : "按文件数统计"} · 悬停查看路径与明细
           </p>
         </div>
         {hasNodes && (
@@ -265,14 +265,6 @@ export function TreeMapPanel({ repoId }: TreeMapPanelProps) {
                 {item.label}
               </button>
             ))}
-            <button
-              type="button"
-              className="treemap-reset"
-              onClick={() => setViewToken((token) => token + 1)}
-              title="回到顶层目录"
-            >
-              回到顶层
-            </button>
           </div>
         )}
       </div>
@@ -318,12 +310,7 @@ export function TreeMapPanel({ repoId }: TreeMapPanelProps) {
         />
       ) : option ? (
         <div className="treemap-chart">
-          <EChart
-            key={viewToken}
-            option={option}
-            height={460}
-            ariaLabel="仓库目录体积矩形树图"
-          />
+          <EChart option={option} height={460} ariaLabel="仓库目录体积矩形树图" />
         </div>
       ) : null}
     </section>

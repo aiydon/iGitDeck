@@ -94,14 +94,6 @@ class SyncRunRepository:
                     (row["repo_id"], row["repo_id"], MAX_RUNS_PER_REPO),
                 )
 
-    def for_repo(self, repo_id: int, limit: int) -> list[SyncRunView]:
-        with self.db.connection() as connection:
-            rows = connection.execute(
-                f"{_VIEW_SELECT} WHERE sr.repo_id = ? ORDER BY sr.id DESC LIMIT ?",
-                (repo_id, limit),
-            ).fetchall()
-        return [_view(row) for row in rows]
-
     def page(self, query: SyncQuery) -> tuple[list[SyncRunView], int]:
         where_sql = ""
         params: list[object] = []

@@ -9,8 +9,6 @@ from fastapi import APIRouter, Path, Query, Response
 from fastapi.responses import FileResponse
 
 from igitdeck.api.deps import CatalogDep, ContainerDep, FilesDep
-from igitdeck.models.branches import BranchList
-from igitdeck.models.network import RepoNetwork
 from igitdeck.models.repo import (
     RepoAddResult,
     RepoBatchCreateRequest,
@@ -90,22 +88,10 @@ async def sync_repo(repo_id: RepoId, container: ContainerDep) -> SyncQueuedResul
     )
 
 
-@router.get("/{repo_id}/branches", response_model=BranchList)
-def list_branches(repo_id: RepoId, container: ContainerDep) -> BranchList:
-    record = container.catalog.get_record(repo_id)
-    return container.branches.list(record)
-
-
 @router.get("/{repo_id}/tree", response_model=RepoTree)
 def get_tree(repo_id: RepoId, container: ContainerDep) -> RepoTree:
     record = container.catalog.get_record(repo_id)
     return container.tree.build(record)
-
-
-@router.get("/{repo_id}/network", response_model=RepoNetwork)
-def get_network(repo_id: RepoId, container: ContainerDep) -> RepoNetwork:
-    record = container.catalog.get_record(repo_id)
-    return container.network.build(record)
 
 
 @router.get("/{repo_id}/raw/{file_path:path}", response_class=FileResponse)

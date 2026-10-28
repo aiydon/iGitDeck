@@ -37,6 +37,7 @@ def test_sync_clones_updates_and_indexes(
     fake_collector: FakeStatsCollector,
     make_git_repo,
     git,
+    repo_runs,
 ) -> None:
     source = make_git_repo(
         {
@@ -75,7 +76,7 @@ def test_sync_clones_updates_and_indexes(
     assert snapshot.disk_bytes > 0
     assert snapshot.languages[0].name == "Python"
 
-    runs = container.sync_runs.for_repo(record.id, 10)
+    runs = repo_runs(record.id, 10)
     assert len(runs) == 1
     assert runs[0].status is SyncRunStatus.SUCCESS
     assert runs[0].duration_seconds is not None
@@ -116,6 +117,7 @@ def test_sync_failure_is_recorded_and_backoff_applies(
     container: Container,
     tmp_path: Path,
     fake_collector: FakeStatsCollector,
+    repo_runs,
 ) -> None:
     container.sync.collector = fake_collector
     missing = tmp_path / "missing-source"
@@ -140,7 +142,7 @@ def test_sync_failure_is_recorded_and_backoff_applies(
     assert failed.consecutive_failures == 1
     assert failed.error_message
     assert container.stats.latest(record.id) is None
-    runs = container.sync_runs.for_repo(record.id, 10)
+    runs = repo_runs(record.id, 10)
     assert len(runs) == 1
     assert runs[0].status is SyncRunStatus.FAILED
 
@@ -156,7 +158,7 @@ def test_sync_failure_is_recorded_and_backoff_applies(
     assert policy.is_due(failed, later)
 
 
-def test_recovering_interrupted_sync_state(container: Container) -> None:
+def test_recovering_interrupted_sync_state(container: Container, repo_runs) -> None:
     source = container.paths.root / "never-cloned"
     identity = RepoIdentity(
         platform=Platform.GITHUB,
@@ -184,7 +186,7 @@ def test_recovering_interrupted_sync_state(container: Container) -> None:
     assert recovered is not None
     assert recovered.status is RepoStatus.PENDING
     assert recovered.last_attempt_at is None
-    runs = container.sync_runs.for_repo(record.id, 10)
+    runs = repo_runs(record.id, 10)
     assert len(runs) == 1
     assert runs[0].id == run_id
     assert runs[0].status is SyncRunStatus.FAILED

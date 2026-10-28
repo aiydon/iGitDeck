@@ -22,7 +22,6 @@ import {
 import { Notice } from "../components/Notice";
 import type { NoticeTone } from "../components/Notice";
 import { ActivityHeatmap } from "../components/repo/ActivityHeatmap";
-import { BranchNetwork } from "../components/repo/BranchNetwork";
 import { TreeMapPanel } from "../components/repo/TreeMapPanel";
 import { CommitList } from "../components/repo/CommitList";
 import { ContributorList } from "../components/repo/ContributorList";
@@ -46,7 +45,7 @@ import { useLiveRefresh, useRequest } from "../lib/hooks";
 import { notifyStatusChanged } from "../lib/status";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
 
-const TABS = ["readme", "overview", "tree", "commits", "trend", "branches"] as const;
+const TABS = ["readme", "overview", "tree", "commits", "trend"] as const;
 type Tab = (typeof TABS)[number];
 
 const TAB_LABELS: Record<Tab, string> = {
@@ -55,7 +54,6 @@ const TAB_LABELS: Record<Tab, string> = {
   tree: "结构",
   commits: "提交",
   trend: "趋势",
-  branches: "分支",
 };
 
 interface NoticeState {
@@ -471,13 +469,6 @@ export function RepoDetailPage() {
         ))}
 
       {tab === "tree" && <TreeMapPanel repoId={repo.id} />}
-
-      {tab === "branches" && (
-        <BranchNetwork
-          repoId={repo.id}
-          defaultBranch={repo.default_branch ?? null}
-        />
-      )}
     </>
   );
 }

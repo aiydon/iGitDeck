@@ -82,7 +82,7 @@ def test_scheduler_tick_requests_due_repositories(container: Container) -> None:
     assert all(trigger is SyncTrigger.SCHEDULED for _, trigger in coordinator.requested)
 
 
-def test_scheduler_fails_stale_syncing_rows(container: Container) -> None:
+def test_scheduler_fails_stale_syncing_rows(container: Container, repo_runs) -> None:
     now = datetime.now(UTC)
     stuck = make_repo(container, "stuck")
     container.repos.mark_syncing(stuck.id, now - timedelta(hours=2))
@@ -112,7 +112,7 @@ def test_scheduler_fails_stale_syncing_rows(container: Container) -> None:
     assert recovered.status is not RepoStatus.SYNCING
     assert recovered.consecutive_failures == 1
     assert recovered.error_message == scheduler_module.STALE_SYNC_MESSAGE
-    runs = container.sync_runs.for_repo(stuck.id, 10)
+    runs = repo_runs(stuck.id, 10)
     assert [run.id for run in runs] == [run_id]
     assert runs[0].status.value == "failed"
 
