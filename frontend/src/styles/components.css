@@ -1268,3 +1268,85 @@
   font-size: 9.5px;
 }
 
+
+/* Batch add -------------------------------------------------------------- */
+.field textarea {
+  width: 100%;
+  min-height: 150px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface-strong);
+  color: var(--fg);
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.6;
+  resize: vertical;
+}
+
+.field textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.batch-count-hint {
+  display: block;
+  margin-top: 5px;
+  color: var(--accent);
+}
+
+.batch-summary {
+  display: flex;
+  gap: 14px;
+  padding: 11px 13px;
+  border-radius: 9px;
+  background: var(--surface-soft);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.batch-count.success {
+  color: var(--success);
+  font-weight: 600;
+}
+
+.batch-errors {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 220px;
+  margin: 0;
+  padding: 10px 12px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  list-style: none;
+}
+
+.batch-errors li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 11.5px;
+}
+
+.batch-errors code {
+  overflow-wrap: anywhere;
+  color: var(--fg-soft);
+  font-size: 11px;
+}
+
+.batch-errors span {
+  color: var(--danger);
+}
+
+.insight-note {
+  margin: -4px 0 14px;
+  padding: 8px 12px;
+  border-left: 3px solid var(--warning);
+  border-radius: 0 8px 8px 0;
+  background: var(--warning-soft);
+  color: var(--warning);
+  font-size: 11.5px;
+}

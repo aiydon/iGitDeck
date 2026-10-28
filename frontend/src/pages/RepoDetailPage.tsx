@@ -365,14 +365,18 @@ export function RepoDetailPage() {
           </section>
         ) : (
           <>
+            {data.insights_note && (
+              <p className="insight-note">{data.insights_note}</p>
+            )}
+
             {trend.length > 0 && (
               <section className="panel trend-panel">
                 <div className="panel-head">
                   <div>
                     <h2>行数趋势</h2>
                     <p>
-                      {repo.default_branch ?? "main"} 分支 git 历史 · {trend.length} 个提交 ·
-                      最新 {formatNumber(trend[trend.length - 1]?.lines ?? 0)} 行
+                      {repo.default_branch ?? "main"} 分支 git 历史 · 最新{" "}
+                      {formatNumber(trend[trend.length - 1]?.lines ?? 0)} 行
                     </p>
                   </div>
                   <span className="panel-badge">

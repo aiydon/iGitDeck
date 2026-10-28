@@ -11,7 +11,8 @@ export type RepoSummary = components["schemas"]["RepoSummary"];
 export type SearchSnippet = components["schemas"]["SearchSnippet"];
 export type RepoPage = components["schemas"]["RepoPage"];
 export type RepoDetail = components["schemas"]["RepoDetail"];
-export type RepoAddResult = components["schemas"]["RepoAddResult"];
+export type RepoBatchResult = components["schemas"]["RepoBatchResult"];
+export type RepoBatchItem = components["schemas"]["RepoBatchItem"];
 export type SyncQueuedResult = components["schemas"]["SyncQueuedResult"];
 export type SyncRunStatus = components["schemas"]["SyncRunStatus"];
 export type SyncTrigger = components["schemas"]["SyncTrigger"];
@@ -93,10 +94,10 @@ export const api = {
   overview: () => request<Overview>("/api/overview"),
   filters: () => request<FilterOptions>("/api/filters"),
   listRepos: (params: RepoListParams) => request<RepoPage>(`/api/repos${toQuery(params)}`),
-  addRepo: (url: string) =>
-    request<RepoAddResult>("/api/repos", {
+  addRepos: (urls: string[]) =>
+    request<RepoBatchResult>("/api/repos/batch", {
       method: "POST",
-      body: JSON.stringify({ url }),
+      body: JSON.stringify({ urls }),
     }),
   getRepo: (repoId: number) => request<RepoDetail>(`/api/repos/${repoId}`),
   status: () => request<SystemStatus>("/api/status"),

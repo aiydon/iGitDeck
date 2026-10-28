@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
 import { api } from "../api/client";
-import type { RepoAddResult, RepoSummary } from "../api/client";
+import type { RepoBatchResult, RepoSummary } from "../api/client";
 import { AddRepoDialog } from "../components/AddRepoDialog";
 import { PlusIcon } from "../components/icons";
 import { Notice } from "../components/Notice";
@@ -84,13 +84,16 @@ export function ReposPage() {
     if (params.get("add") === "1") updateParam("add", null);
   }
 
-  function handleAdded(result: RepoAddResult) {
+  function handleBatchDone(result: RepoBatchResult) {
     closeAdd();
+    const parts = [
+      result.created ? `新增 ${result.created}` : "",
+      result.existing ? `已存在 ${result.existing}` : "",
+      result.failed ? `失败 ${result.failed}` : "",
+    ].filter(Boolean);
     setNotice({
-      tone: "success",
-      message: result.created
-        ? `已加入同步队列：${result.repo.full_name}`
-        : `${result.repo.full_name} 已在仓库列表中`,
+      tone: result.failed === 0 ? "success" : result.created > 0 ? "info" : "error",
+      message: parts.join("，") || "没有需要添加的仓库",
     });
     refreshAll();
     window.setTimeout(refreshAll, 1500);
@@ -208,7 +211,7 @@ export function ReposPage() {
         )}
       </section>
 
-      {addOpen && <AddRepoDialog onClose={closeAdd} onAdded={handleAdded} />}
+      {addOpen && <AddRepoDialog onClose={closeAdd} onDone={handleBatchDone} />}
     </>
   );
 }
