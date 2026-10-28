@@ -287,6 +287,37 @@ class RepoAddResult(BaseModel):
     created: bool
 
 
+class RepoBatchCreateRequest(BaseModel):
+    urls: list[str] = Field(min_length=1, max_length=200)
+    source: RepoSource = RepoSource.MANUAL
+
+
+class RepoBatchItem(BaseModel):
+    url: str
+    created: bool = False
+    repo: RepoSummary | None = None
+    error: str | None = None
+
+
+class RepoBatchResult(BaseModel):
+    items: list[RepoBatchItem]
+
+    @computed_field
+    @property
+    def created(self) -> int:
+        return sum(1 for item in self.items if item.created)
+
+    @computed_field
+    @property
+    def existing(self) -> int:
+        return sum(1 for item in self.items if item.repo is not None and not item.created)
+
+    @computed_field
+    @property
+    def failed(self) -> int:
+        return sum(1 for item in self.items if item.error is not None)
+
+
 class RepoDetail(BaseModel):
     repo: RepoSummary
     readme: ReadmeView | None

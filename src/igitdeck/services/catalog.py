@@ -9,6 +9,8 @@ from pathlib import Path
 from igitdeck.clock import utcnow
 from igitdeck.models.dashboard import Facet, FilterOptions
 from igitdeck.models.errors import (
+    DomainError,
+    InvalidRepoUrl,
     PathOutsideRepo,
     RepoAlreadyExists,
     RepoFileNotFound,
@@ -18,6 +20,8 @@ from igitdeck.models.repo import (
     FacetField,
     Platform,
     RepoAddResult,
+    RepoBatchItem,
+    RepoBatchResult,
     RepoDetail,
     RepoIdentity,
     RepoLineTrend,
@@ -73,13 +77,14 @@ class CatalogService:
         *,
         source: RepoSource,
         description: str | None = None,
+        fetch_metadata: bool = True,
     ) -> RepoAddResult:
         identity = parse_repo_url(url)
         if (existing := self._find(identity)) is not None:
             return self._add_result(existing, created=False)
 
         clean_description = (description or "").strip() or None
-        if clean_description is None:
+        if clean_description is None and fetch_metadata:
             clean_description = self.metadata.fetch_description(identity)
 
         try:
@@ -97,6 +102,27 @@ class CatalogService:
             return self._add_result(record, created=False)
 
         return self._add_result(record, created=True)
+
+    def add_many(self, urls: list[str], *, source: RepoSource) -> RepoBatchResult:
+        """Add each pasted URL independently; one bad line never fails the batch.
+
+        Metadata lookups are skipped here so a long list does not wait on one
+        GitHub API call per repository; the first sync fills descriptions in.
+        """
+        items: list[RepoBatchItem] = []
+        for raw in urls:
+            url = raw.strip()
+            if not url:
+                continue
+            try:
+                result = self.add(url, source=source, fetch_metadata=False)
+            except DomainError as exc:
+                items.append(RepoBatchItem(url=url, error=str(exc)))
+            else:
+                items.append(RepoBatchItem(url=url, created=result.created, repo=result.repo))
+        if not items:
+            raise InvalidRepoUrl("没有可添加的仓库地址")
+        return RepoBatchResult(items=items)
 
     def list_repos(self, query: RepoQuery) -> RepoPage:
         items, total = self.repos.list_page(query, build_fts_query(query.q))

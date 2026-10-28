@@ -9,6 +9,55 @@ from igitdeck.main import create_app
 from igitdeck.models.sync import SyncRunStatus, SyncTrigger
 
 
+def test_batch_add_reports_each_line(settings: Settings) -> None:
+    app = create_app(settings)
+
+    with TestClient(app) as client:
+        first = client.post(
+            "/api/repos/batch",
+            json={
+                "urls": [
+                    "https://github.com/psf/requests",
+                    "https://github.com/Pallets/Click",
+                    "https://example.com/not-a-repo",
+                    "   ",
+                ]
+            },
+        )
+        assert first.status_code == 200
+        body = first.json()
+        assert (body["created"], body["existing"], body["failed"]) == (2, 0, 1)
+        assert len(body["items"]) == 3
+        failed = next(item for item in body["items"] if item["error"])
+        assert failed["url"] == "https://example.com/not-a-repo"
+        assert "不支持的平台" in failed["error"]
+        assert failed["repo"] is None
+
+        again = client.post(
+            "/api/repos/batch",
+            json={
+                "urls": [
+                    "pallets/click",
+                    "https://gitlab.com/group/project",
+                ]
+            },
+        )
+        assert again.status_code == 200
+        summary = again.json()
+        assert (summary["created"], summary["existing"], summary["failed"]) == (1, 1, 0)
+        assert {item["repo"]["full_name"].lower() for item in summary["items"]} == {
+            "pallets/click",
+            "group/project",
+        }
+
+        blank = client.post("/api/repos/batch", json={"urls": ["  ", ""]})
+        assert blank.status_code == 400
+        assert "没有可添加" in blank.json()["detail"]
+
+        empty = client.post("/api/repos/batch", json={"urls": []})
+        assert empty.status_code == 422
+
+
 def test_api_lifecycle(settings: Settings) -> None:
     app = create_app(settings)
 

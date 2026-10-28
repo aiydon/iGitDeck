@@ -11,6 +11,8 @@ from fastapi.responses import FileResponse
 from igitdeck.api.deps import CatalogDep, ContainerDep, FilesDep
 from igitdeck.models.repo import (
     RepoAddResult,
+    RepoBatchCreateRequest,
+    RepoBatchResult,
     RepoCreateRequest,
     RepoDetail,
     RepoPage,
@@ -50,6 +52,23 @@ async def add_repo(
         response.status_code = 200
     elif container.settings.auto_sync:
         container.coordinator.request(result.repo.id, SyncTrigger.SCHEDULED)
+    return result
+
+
+@router.post("/batch", response_model=RepoBatchResult)
+async def add_repos(
+    payload: RepoBatchCreateRequest,
+    container: ContainerDep,
+) -> RepoBatchResult:
+    result = await asyncio.to_thread(
+        container.catalog.add_many,
+        payload.urls,
+        source=payload.source,
+    )
+    if container.settings.auto_sync:
+        for item in result.items:
+            if item.created and item.repo is not None:
+                container.coordinator.request(item.repo.id, SyncTrigger.SCHEDULED)
     return result
 
 
